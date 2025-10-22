@@ -107,20 +107,6 @@ sudo make uninstall
 
 Ali po namestitvi poiščite "baRadio" v aplikacijskem meniju.
 
-## Flatpak
-
-Za gradnjo Flatpak paketa (če je na voljo):
-
-```sh
-./build-flatpak.sh
-```
-
-Za zagon iz Flatpaka:
-
-```sh
-flatpak run si.generacija.baradio
-```
-
 ## Uporaba
 
 - Desni klik na seznam postaj za dodajanje, urejanje ali brisanje postaj
