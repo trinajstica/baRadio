@@ -6,37 +6,9 @@ Preprost GTK3 radijski predvajalnik (baRadio v2).
 Gradnja
 -------
 
-Potrebne knjižnice (primer za Debian/Ubuntu):
-
-- libgtk-3-dev
-- libayatana-appindicator3-dev
-- libsqlite3-dev
-- libgstreamer1.0-dev
-
-Za gradnjo v projektu:
-
-```bash
-make
-```
-
-Zagon
------
-
-Po uspešni gradnji:
-
-```bash
-./baradio
-```
-
-Namestitev
-----------
-
-```bash
-sudo make install
-```
 # baRadio
 
-Enostaven radio predvajalnik za Linux z GTK3 vmesnikom in podporo za tray ikono.
+Preprost GTK3 radijski predvajalnik (baRadio v2).
 
 ## Funkcionalnost
 - Predvajanje spletnih radijskih postaj
@@ -57,7 +29,7 @@ Programu za delovanje potrebujete naslednje knjižnice:
 - **SQLite 3** - baza podatkov za postaje
 - **Ayatana AppIndicator 3** - tray ikona
 
-### Namestitev odvisnosti
+### Namestitev odvisnosti po distribucijah
 
 **Ubuntu/Debian/Mint:**
 ```sh
@@ -74,31 +46,14 @@ sudo dnf install gtk3 libayatana-appindicator-gtk3 sqlite gstreamer1-plugins-bas
 sudo pacman -S gtk3 libayatana-appindicator sqlite gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad
 ```
 
-**Solus:**
+**Solus (runtime):**
 ```sh
 sudo eopkg install libgtk-3 libayatana-appindicator sqlite3 gstreamer-1.0-plugins-base gstreamer-1.0-plugins-good gstreamer-1.0-plugins-bad
 ```
 
 ## Zahteve za razvoj
 
-Za kompilacijo programa iz izvorne kode potrebujete:
-
-
-### Namestitev razvojnih odvisnosti (Solus)
-
-Za prevajanje in razvoj aplikacije na Solus Linux namestite vse potrebne knjižnice in orodja z enim ukazom:
-
-```sh
-sudo eopkg install -c system.devel libgtk-3-devel libayatana-appindicator-devel sqlite3-devel gstreamer-1.0-devel gstreamer-1.0-plugins-base-devel
-```
-
-To namesti:
-- vse osnovne razvojne pakete (gcc, make, pkgconfig ...)
-- razvojne datoteke za GTK3, Ayatana AppIndicator, SQLite3, GStreamer
-
-Po namestitvi lahko aplikacijo prevedete z ukazom `make`.
-
-### Namestitev razvojnih orodij
+Za kompilacijo programa iz izvorne kode potrebujete orodja in razvojne knjižnice:
 
 **Ubuntu/Debian/Mint:**
 ```sh
@@ -115,13 +70,16 @@ sudo dnf install gcc make pkg-config gtk3-devel libayatana-appindicator-gtk3-dev
 sudo pacman -S base-devel pkg-config gtk3 libayatana-appindicator sqlite gstreamer
 ```
 
-**Solus:**
+**Solus (build deps):**
 ```sh
-sudo eopkg install -c system.devel
-sudo eopkg install libgtk-3-devel libayatana-appindicator-devel sqlite3-devel gstreamer-1.0-devel
+sudo eopkg install -c system.devel libgtk-3-devel libayatana-appindicator-devel sqlite3-devel gstreamer-1.0-devel gstreamer-1.0-plugins-base-devel
 ```
 
+Na Solusu lahko uporabite priloženo skripto `scripts/install-deps-solus.sh` za namestitev runtime in razvojnih paketov.
+
 ## Gradnja
+
+Za prevajanje projekta iz izvora:
 
 ```sh
 make
@@ -144,20 +102,20 @@ sudo make uninstall
 ## Zagon
 
 ```sh
-baradio
+./baradio
 ```
 
-Ali poiščite "baRadio" v svojem aplikacijskem meniju.
+Ali po namestitvi poiščite "baRadio" v aplikacijskem meniju.
 
 ## Flatpak
 
-Za gradnjo Flatpak paketa:
+Za gradnjo Flatpak paketa (če je na voljo):
 
 ```sh
 ./build-flatpak.sh
 ```
 
-Nato lahko program zaženete z:
+Za zagon iz Flatpaka:
 
 ```sh
 flatpak run si.generacija.baradio
@@ -165,11 +123,11 @@ flatpak run si.generacija.baradio
 
 ## Uporaba
 
-- **Desni klik** na seznam postaj za dodajanje, urejanje ali brisanje postaj
-- **Dvojni klik** na postajo za predvajanje
-- **Tipkanje** v seznamu postaj odpre iskalno polje
-- **ESC** zapre iskalno polje
-- **Multimedijske tipke** za kontrolo predvajanja
+- Desni klik na seznam postaj za dodajanje, urejanje ali brisanje postaj
+- Dvojni klik na postajo za predvajanje
+- Tipkanje v seznamu postaj odpre iskalno polje
+- ESC zapre iskalno polje
+- Multimedijske tipke za kontrolo predvajanja
 
 ## Baza podatkov
 
