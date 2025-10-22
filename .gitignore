@@ -1,0 +1,24 @@
+# Binarna datoteka
+baradio
+
+# Build artefakti
+*.o
+*.so
+/*.a
+
+# Lokalna baza in lock
+*.db
+*.lock
+
+# Editor in sistemske datoteke
+.DS_Store
+*~
+*.swp
+.vscode/
+
+# Log datoteke
+*.log
+
+# Node / Python cache (če se kdaj doda)
+node_modules/
+__pycache__/

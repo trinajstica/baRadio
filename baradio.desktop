@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=baRadio
+Comment=Preprost radio predvajalnik
+Exec=baradio
+Icon=baradio
+Terminal=false
+Categories=AudioVideo;Player;GTK;
+StartupNotify=true
