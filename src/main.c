@@ -18,7 +18,7 @@
 void on_play_clicked(GtkButton *button, gpointer user_data);
 
 // Verzija aplikacije
-static const char *version = "baRadio v2.0, 2025";
+static const char *version = "baRadio v2.1, 2025";
 
 // Forward deklaracije
 static void on_gst_message(GstBus *bus, GstMessage *msg, gpointer user_data);
@@ -1168,39 +1168,74 @@ void fill_station_store(GtkListStore *store, const char *filter) {
     sqlite3_close(db);
 }
 
-// Callback za prikaz glavnega okna
-void show_main_window(GtkMenuItem *item, gpointer user_data) {
+// Globalni kazalec na tray menu postavko za prikaz/skritje okna
+static GtkWidget *show_item = NULL;
+// Globalni kazalec za About dialog (ena instanca)
+static GtkWidget *about_dialog = NULL;
+
+// Handler za sprostitev kazalca, ko je About uničen
+static void on_about_destroy(GtkWidget *widget, gpointer user_data) {
+    (void)widget; (void)user_data;
+    about_dialog = NULL;
+}
+
+// Funkcija za posodobitev besedila v meniju glede na stanje okna
+static void update_show_item_label() {
+    if (!main_window || !show_item) return;
+    if (gtk_widget_get_visible(main_window)) {
+        gtk_menu_item_set_label(GTK_MENU_ITEM(show_item), "Skrij okno");
+    } else {
+        gtk_menu_item_set_label(GTK_MENU_ITEM(show_item), "Prikaži okno");
+    }
+}
+
+// Callback za prikaz/skritje glavnega okna
+void toggle_main_window(GtkMenuItem *item, gpointer user_data) {
     (void)item; (void)user_data;
-    if (main_window) {
+    if (!main_window) return;
+    if (gtk_widget_get_visible(main_window)) {
+        gtk_widget_hide(main_window);
+    } else {
         gtk_widget_show_all(main_window);
-        gtk_widget_hide(global_filter_entry); // vedno skrij filter_entry
-        /* Poskrbi, da je okno vedno centrirano */
+        gtk_widget_hide(global_filter_entry);
         gtk_window_set_position(GTK_WINDOW(main_window), GTK_WIN_POS_CENTER_ALWAYS);
-        /* Ne nastavljamo "always on top" - uporabnik je ne želi. */
         gtk_window_set_keep_above(GTK_WINDOW(main_window), FALSE);
         gtk_window_present(GTK_WINDOW(main_window));
-        gtk_widget_grab_focus(treeview); // Postavi fokus na treeview
+        gtk_widget_grab_focus(treeview);
     }
+    update_show_item_label();
 }
 
 // About dialog
 static void show_about_dialog(GtkMenuItem *item, gpointer user_data) {
     (void)item; (void)user_data;
-    GtkWidget *about = gtk_about_dialog_new();
+    if (about_dialog) {
+        // Če že obstaja, ga le prikaži/spredaj postavi
+        gtk_window_present(GTK_WINDOW(about_dialog));
+        return;
+    }
+
+    about_dialog = gtk_about_dialog_new();
     const gchar *authors[] = { "Boris Arko - BArko", "SimOne", NULL };
-    gtk_about_dialog_set_program_name(GTK_ABOUT_DIALOG(about), "baRadio");
-    gtk_about_dialog_set_version(GTK_ABOUT_DIALOG(about), version);
-    gtk_about_dialog_set_comments(GTK_ABOUT_DIALOG(about), "Enostaven predvajalnik slovenskih spletnih radijskih postaj.");
-    gtk_about_dialog_set_authors(GTK_ABOUT_DIALOG(about), authors);
-    gtk_window_set_transient_for(GTK_WINDOW(about), GTK_WINDOW(main_window));
-    gtk_dialog_run(GTK_DIALOG(about));
-    gtk_widget_destroy(about);
+    gtk_about_dialog_set_program_name(GTK_ABOUT_DIALOG(about_dialog), "baRadio");
+    gtk_about_dialog_set_version(GTK_ABOUT_DIALOG(about_dialog), version);
+    gtk_about_dialog_set_comments(GTK_ABOUT_DIALOG(about_dialog), "Enostaven predvajalnik slovenskih spletnih radijskih postaj.");
+    gtk_about_dialog_set_authors(GTK_ABOUT_DIALOG(about_dialog), authors);
+    // Vedno modalno in vedno centrirano na zaslonu
+    gtk_window_set_modal(GTK_WINDOW(about_dialog), TRUE);
+    gtk_window_set_position(GTK_WINDOW(about_dialog), GTK_WIN_POS_CENTER_ALWAYS);
+    // Ko se dialog zapre, sprosti kazalec
+    g_signal_connect(about_dialog, "response", G_CALLBACK(gtk_widget_destroy), NULL);
+    g_signal_connect(about_dialog, "destroy", G_CALLBACK(on_about_destroy), NULL);
+    gtk_widget_show_all(about_dialog);
+    gtk_window_present(GTK_WINDOW(about_dialog));
 }
 
 // Callback za skrivanje okna namesto zapiranja
 static gboolean hide_on_delete(GtkWidget *window, GdkEvent *event, gpointer user_data) {
     (void)event; (void)user_data;
     gtk_widget_hide(window);
+    update_show_item_label();
     return TRUE; // prepreči zapiranje
 }
 
@@ -1564,12 +1599,12 @@ int main(int argc, char **argv) {
      GtkWidget *version_item = gtk_menu_item_new_with_label(version);
      gtk_widget_set_sensitive(version_item, FALSE);
      gtk_menu_shell_append(GTK_MENU_SHELL(menu), version_item);
-    GtkWidget *show_item = gtk_menu_item_new_with_label("Prikaži okno");
+    show_item = gtk_menu_item_new_with_label("Prikaži okno");
     GtkWidget *about_item = gtk_menu_item_new_with_label("O baRadio");
     GtkWidget *quit_item = gtk_menu_item_new_with_label("Izhod");
     GtkWidget *sep_top = gtk_separator_menu_item_new();
     GtkWidget *sep_bottom = gtk_separator_menu_item_new();
-    g_signal_connect(show_item, "activate", G_CALLBACK(show_main_window), NULL);
+    g_signal_connect(show_item, "activate", G_CALLBACK(toggle_main_window), NULL);
     g_signal_connect(about_item, "activate", G_CALLBACK(show_about_dialog), NULL);
     g_signal_connect(quit_item, "activate", G_CALLBACK(quit_app), NULL);
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), show_item);
@@ -1579,6 +1614,8 @@ int main(int argc, char **argv) {
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), quit_item);
     gtk_widget_show_all(menu);
     app_indicator_set_menu(indicator, GTK_MENU(menu));
+    // Posodobi labelo ob zagonu (če je okno že prikazano)
+    update_show_item_label();
 
     // Okno je ob zagonu skrito (če želiš)
 
