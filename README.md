@@ -3,13 +3,6 @@ baRadio
 
 Preprost GTK3 radijski predvajalnik (baRadio v2).
 
-Gradnja
--------
-
-# baRadio
-
-Preprost GTK3 radijski predvajalnik (baRadio v2).
-
 ## Funkcionalnost
 - Predvajanje spletnih radijskih postaj
 - Upravljanje seznama postaj (dodajanje, urejanje, brisanje)
