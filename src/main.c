@@ -27,6 +27,7 @@ static void save_last_played(const char *name);
 static void refresh_active_station_color();
 static void play_station(const char *name);
 static void load_station_urls();
+static void update_play_item_label();
 
 // Extern deklaracije za globalne spremenljivke (definirane nižje v kodi)
 extern GstElement *pipeline;
@@ -655,11 +656,12 @@ void on_play_clicked(GtkButton *button, gpointer user_data) {
             valid = gtk_tree_model_iter_next(filter_model, &iter);
         }
         // Nastavi ikono na Play
-        if (play_button) {
-            GtkWidget *img = gtk_image_new_from_icon_name("media-playback-start-symbolic", GTK_ICON_SIZE_BUTTON);
-            gtk_button_set_image(GTK_BUTTON(play_button), img);
-            gtk_widget_set_tooltip_text(play_button, "Predvajaj");
-        }
+            if (play_button) {
+                GtkWidget *img = gtk_image_new_from_icon_name("media-playback-start-symbolic", GTK_ICON_SIZE_BUTTON);
+                gtk_button_set_image(GTK_BUTTON(play_button), img);
+                gtk_widget_set_tooltip_text(play_button, "Predvajaj");
+                update_play_item_label();
+            }
     } else {
         // Če pipeline ne obstaja, predvajaj izbrano postajo v treeview
         GtkTreeModel *filter_model = GTK_TREE_MODEL(gtk_tree_view_get_model(GTK_TREE_VIEW(treeview)));
@@ -676,6 +678,7 @@ void on_play_clicked(GtkButton *button, gpointer user_data) {
                     GtkWidget *img = gtk_image_new_from_icon_name("media-playback-pause-symbolic", GTK_ICON_SIZE_BUTTON);
                     gtk_button_set_image(GTK_BUTTON(play_button), img);
                     gtk_widget_set_tooltip_text(play_button, "Pavza");
+                    update_play_item_label();
                 }
             }
         }
@@ -991,6 +994,7 @@ gboolean on_filter_entry_key_press(GtkWidget *entry, GdkEventKey *event, gpointe
                         GtkWidget *img = gtk_image_new_from_icon_name("media-playback-start-symbolic", GTK_ICON_SIZE_BUTTON);
                         gtk_button_set_image(GTK_BUTTON(play_button), img);
                         gtk_widget_set_tooltip_text(play_button, "Predvajaj");
+                        update_play_item_label();
                     }
                 } else {
                     // Predvajaj izbrano postajo
@@ -1000,6 +1004,7 @@ gboolean on_filter_entry_key_press(GtkWidget *entry, GdkEventKey *event, gpointe
                         GtkWidget *img = gtk_image_new_from_icon_name("media-playback-pause-symbolic", GTK_ICON_SIZE_BUTTON);
                         gtk_button_set_image(GTK_BUTTON(play_button), img);
                         gtk_widget_set_tooltip_text(play_button, "Pavza");
+                        update_play_item_label();
                     }
                 }
                 g_free(name);
@@ -1170,6 +1175,8 @@ void fill_station_store(GtkListStore *store, const char *filter) {
 
 // Globalni kazalec na tray menu postavko za prikaz/skritje okna
 static GtkWidget *show_item = NULL;
+// Globalni kazalec na tray menu postavko za predvajaj/pavza
+static GtkWidget *play_item = NULL;
 // Globalni kazalec za About dialog (ena instanca)
 static GtkWidget *about_dialog = NULL;
 
@@ -1186,6 +1193,16 @@ static void update_show_item_label() {
         gtk_menu_item_set_label(GTK_MENU_ITEM(show_item), "Skrij okno");
     } else {
         gtk_menu_item_set_label(GTK_MENU_ITEM(show_item), "Prikaži okno");
+    }
+}
+
+// Posodobi labelo Play/Pause v tray meniju glede na stanje predvajalnika
+static void update_play_item_label() {
+    if (!play_item) return;
+    if (pipeline) {
+        gtk_menu_item_set_label(GTK_MENU_ITEM(play_item), "Pavza");
+    } else {
+        gtk_menu_item_set_label(GTK_MENU_ITEM(play_item), "Predvajaj");
     }
 }
 
@@ -1490,6 +1507,8 @@ int main(int argc, char **argv) {
     gtk_widget_set_tooltip_text(play_button, "Predvajaj");
     g_signal_connect(play_button, "clicked", G_CALLBACK(on_play_clicked), NULL);
     gtk_header_bar_pack_start(GTK_HEADER_BAR(header), play_button);
+    // Sinhroniziraj labelo v tray meniju z začetnim stanjem predvajalnika
+    update_play_item_label();
 
     // Next gumb
     GtkWidget *next_button = gtk_button_new_from_icon_name("media-skip-forward-symbolic", GTK_ICON_SIZE_BUTTON);
@@ -1600,22 +1619,37 @@ int main(int argc, char **argv) {
      gtk_widget_set_sensitive(version_item, FALSE);
      gtk_menu_shell_append(GTK_MENU_SHELL(menu), version_item);
     show_item = gtk_menu_item_new_with_label("Prikaži okno");
+    /* Dodaj naprej/nazaj menijske vnose in predvajaj/pavza */
+    play_item = gtk_menu_item_new_with_label("Predvajaj");
+    GtkWidget *next_item = gtk_menu_item_new_with_label("Naprej");
+    GtkWidget *prev_item = gtk_menu_item_new_with_label("Nazaj");
     GtkWidget *about_item = gtk_menu_item_new_with_label("O baRadio");
     GtkWidget *quit_item = gtk_menu_item_new_with_label("Izhod");
     GtkWidget *sep_top = gtk_separator_menu_item_new();
+    /* separator neposredno za Predvajaj/Pavza */
+    GtkWidget *sep_after_play = gtk_separator_menu_item_new();
     GtkWidget *sep_bottom = gtk_separator_menu_item_new();
     g_signal_connect(show_item, "activate", G_CALLBACK(toggle_main_window), NULL);
+    g_signal_connect(play_item, "activate", G_CALLBACK(on_play_clicked), NULL);
+    g_signal_connect(next_item, "activate", G_CALLBACK(on_next_clicked), NULL);
+    g_signal_connect(prev_item, "activate", G_CALLBACK(on_previous_clicked), NULL);
     g_signal_connect(about_item, "activate", G_CALLBACK(show_about_dialog), NULL);
     g_signal_connect(quit_item, "activate", G_CALLBACK(quit_app), NULL);
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), show_item);
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), sep_top);
-    gtk_menu_shell_append(GTK_MENU_SHELL(menu), about_item);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), play_item);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), sep_after_play);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), next_item);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), prev_item);
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), sep_bottom);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), about_item);
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), quit_item);
     gtk_widget_show_all(menu);
     app_indicator_set_menu(indicator, GTK_MENU(menu));
     // Posodobi labelo ob zagonu (če je okno že prikazano)
     update_show_item_label();
+    // Posodobi Play/Pause labelo v meniju glede na trenutno stanje
+    update_play_item_label();
 
     // Okno je ob zagonu skrito (če želiš)
 
