@@ -140,7 +140,7 @@ Kratek opis: tray ikona z osnovnimi kontrolami (play/pause, stop).
 
 Ikona aplikacije (SVG):
 
-![Ikona aplikacije](./icons/baradio.svg)
+<img src="./icons/baradio.svg" width="128" alt="Ikona aplikacije" />
 
 ## Avtor
 
