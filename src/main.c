@@ -1523,6 +1523,17 @@ int main(int argc, char **argv) {
     main_window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_window_set_title(GTK_WINDOW(main_window), version);
     gtk_window_set_default_size(GTK_WINDOW(main_window), 450, 350);
+    /* Zaklenemo dimenzije okna: nastavimo minimalno in maksimalno velikost enako privzeti
+       ter onemogočimo spreminjanje velikosti. To prepreči uporabniku, da pomanjša/razširi
+       okno (dimenzije ostanejo fiksne). */
+    {
+        GdkGeometry hints;
+        memset(&hints, 0, sizeof(hints));
+        hints.min_width = hints.max_width = 450;
+        hints.min_height = hints.max_height = 350;
+        gtk_window_set_geometry_hints(GTK_WINDOW(main_window), NULL, &hints, GDK_HINT_MIN_SIZE | GDK_HINT_MAX_SIZE);
+        gtk_window_set_resizable(GTK_WINDOW(main_window), FALSE);
+    }
     /* Vedno centriraj okno na zaslonu */
     gtk_window_set_position(GTK_WINDOW(main_window), GTK_WIN_POS_CENTER_ALWAYS);
 
