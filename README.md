@@ -120,7 +120,7 @@ Postaje in nastavitve so shranjene v SQLite bazi: `~/.config/baradio/baradio.db`
 
 ## Slike
 
-Spodaj so prikazi aplikacije, ki predstavljajo osnovni izgled vmesnika in tray ikono.
+Spodaj so prikazi aplikacije, ki predstavljajo osnovni izgled vmesnika.
 
 ![Glavni vmesnik - seznam postaj](./slika1.png)
 
