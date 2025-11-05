@@ -118,6 +118,30 @@ Postaje in nastavitve so shranjene v SQLite bazi: `~/.config/baradio/baradio.db`
 - Program podpira samo en tekoči primerek (single instance)
 - Za predvajanje nekaterih formatov lahko potrebujete dodatne GStreamer vtičnike
 
+## Slike
+
+Spodaj so prikazi aplikacije, ki predstavljajo osnovni izgled vmesnika in tray ikono.
+
+![Glavni vmesnik - seznam postaj](./slika1.png)
+
+Kratek opis: glavni pogled s seznamom postaj in kontrolami za predvajanje.
+
+![Predvajanje skladbe](./slika2.png)
+
+Kratek opis: okno s prikazom trenutne predvajane skladbe in metapodatki.
+
+![Iskanje postaj](./slika3.png)
+
+Kratek opis: primer uporabe iskalnega polja za filtriranje seznama postaj.
+
+![Tray ikona in kontrola](./slika4.png)
+
+Kratek opis: tray ikona z osnovnimi kontrolami (play/pause, stop).
+
+Ikona aplikacije (SVG):
+
+![Ikona aplikacije](./icons/baradio.svg)
+
 ## Avtor
 
-BArko, 2025
+BArko & SimOne, 2025 
