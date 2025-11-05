@@ -28,6 +28,8 @@ static void refresh_active_station_color();
 static void play_station(const char *name);
 static void load_station_urls();
 static void update_play_item_label();
+static void on_tray_menu_show(GtkWidget *menu, gpointer user_data);
+static void update_current_playing_item();
 
 // Extern deklaracije za globalne spremenljivke (definirane nižje v kodi)
 extern GstElement *pipeline;
@@ -638,6 +640,13 @@ void on_play_clicked(GtkButton *button, gpointer user_data) {
     (void)button; (void)user_data;
     if (pipeline) {
         // Če že predvaja, ustavi (kot je bila logika v stop)
+        {
+            GstBus *bus = gst_element_get_bus(pipeline);
+            if (bus) {
+                gst_bus_remove_signal_watch(bus);
+                gst_object_unref(bus);
+            }
+        }
         gst_element_set_state(pipeline, GST_STATE_NULL);
         gst_object_unref(pipeline);
         pipeline = NULL;
@@ -661,6 +670,7 @@ void on_play_clicked(GtkButton *button, gpointer user_data) {
                 gtk_button_set_image(GTK_BUTTON(play_button), img);
                 gtk_widget_set_tooltip_text(play_button, "Predvajaj");
                 update_play_item_label();
+                update_current_playing_item();
             }
     } else {
         // Če pipeline ne obstaja, predvajaj izbrano postajo v treeview
@@ -679,6 +689,7 @@ void on_play_clicked(GtkButton *button, gpointer user_data) {
                     gtk_button_set_image(GTK_BUTTON(play_button), img);
                     gtk_widget_set_tooltip_text(play_button, "Pavza");
                     update_play_item_label();
+                    update_current_playing_item();
                 }
             }
         }
@@ -840,6 +851,11 @@ gboolean on_main_window_key_press(GtkWidget *widget, GdkEventKey *event, gpointe
         case GDK_KEY_AudioStop:
             // Stop
             if (pipeline) {
+                GstBus *bus = gst_element_get_bus(pipeline);
+                if (bus) {
+                    gst_bus_remove_signal_watch(bus);
+                    gst_object_unref(bus);
+                }
                 gst_element_set_state(pipeline, GST_STATE_NULL);
                 gst_object_unref(pipeline);
                 pipeline = NULL;
@@ -1106,6 +1122,7 @@ static void on_gst_message(GstBus *bus, GstMessage *msg, gpointer user_data) {
             snprintf(info, sizeof(info), "%s", station_name);
         gtk_label_set_text(GTK_LABEL(label), info);
         gst_tag_list_unref(tags);
+        update_current_playing_item();
     }
 }
 
@@ -1177,6 +1194,12 @@ void fill_station_store(GtkListStore *store, const char *filter) {
 static GtkWidget *show_item = NULL;
 // Globalni kazalec na tray menu postavko za predvajaj/pavza
 static GtkWidget *play_item = NULL;
+// Prikaže trenutno predvajano postajo nad Predvajaj/Pavza v tray meniju
+static GtkWidget *current_playing_item = NULL;
+// Poseben vnos za prikaz imena postaje (prikazan nad pesmijo)
+static GtkWidget *current_station_item = NULL;
+// Separator pod pesmijo
+static GtkWidget *sep_after_song = NULL;
 // Globalni kazalec za About dialog (ena instanca)
 static GtkWidget *about_dialog = NULL;
 
@@ -1203,6 +1226,53 @@ static void update_play_item_label() {
         gtk_menu_item_set_label(GTK_MENU_ITEM(play_item), "Pavza");
     } else {
         gtk_menu_item_set_label(GTK_MENU_ITEM(play_item), "Predvajaj");
+    }
+}
+
+// Handler, sprožen ko se tray menu prikaže — osveži informacije v meniju
+static void on_tray_menu_show(GtkWidget *menu, gpointer user_data) {
+    (void)menu; (void)user_data;
+    // Posodobi labelo Play/Pause
+    update_play_item_label();
+    update_current_playing_item();
+}
+
+// Posodobi current_playing_item iz trenutnih globalnih spremenljivk
+static void update_current_playing_item() {
+    if (!current_playing_item) return;
+    if (!current_station_item) return;
+    if (pipeline) {
+        const char *station_name = NULL;
+        if (strlen(current_station) > 0) {
+            GHashTableIter iter;
+            gpointer key, value;
+            g_hash_table_iter_init(&iter, station_urls);
+            while (g_hash_table_iter_next(&iter, &key, &value)) {
+                if (value && strcmp((const char *)value, current_station) == 0) {
+                    station_name = (const char *)key;
+                    break;
+                }
+            }
+        }
+        if (station_name) gtk_menu_item_set_label(GTK_MENU_ITEM(current_station_item), station_name);
+        else gtk_menu_item_set_label(GTK_MENU_ITEM(current_station_item), "Postaja");
+        gtk_widget_set_sensitive(current_station_item, TRUE);
+        gtk_widget_show(current_station_item);
+
+        if (strlen(current_song) > 0) {
+            gtk_menu_item_set_label(GTK_MENU_ITEM(current_playing_item), current_song);
+            gtk_widget_set_sensitive(current_playing_item, TRUE);
+            gtk_widget_show(current_playing_item);
+            if (sep_after_song) gtk_widget_show(sep_after_song);
+        } else {
+            /* če ni podatka o pesmi, skrij vnos za pesem */
+            gtk_widget_hide(current_playing_item);
+            if (sep_after_song) gtk_widget_hide(sep_after_song);
+        }
+    } else {
+        gtk_widget_hide(current_station_item);
+        gtk_widget_hide(current_playing_item);
+        if (sep_after_song) gtk_widget_hide(sep_after_song);
     }
 }
 
@@ -1261,6 +1331,11 @@ void quit_app(GtkMenuItem *item, gpointer user_data) {
     (void)item; (void)user_data;
     // Ustavi predvajanje in počisti pipeline
     if (pipeline) {
+        GstBus *bus = gst_element_get_bus(pipeline);
+        if (bus) {
+            gst_bus_remove_signal_watch(bus);
+            gst_object_unref(bus);
+        }
         gst_element_set_state(pipeline, GST_STATE_NULL);
         gst_object_unref(pipeline);
         pipeline = NULL;
@@ -1290,6 +1365,13 @@ void on_station_activated(GtkTreeView *treeview, GtkTreePath *path, GtkTreeViewC
             const char *url = g_hash_table_lookup(station_urls, name);
             if (url && pipeline && strcmp(current_station, url) == 0) {
                 // Ustavi predvajanje (kot on_play_clicked)
+                {
+                    GstBus *bus = gst_element_get_bus(pipeline);
+                    if (bus) {
+                        gst_bus_remove_signal_watch(bus);
+                        gst_object_unref(bus);
+                    }
+                }
                 gst_element_set_state(pipeline, GST_STATE_NULL);
                 gst_object_unref(pipeline);
                 pipeline = NULL;
@@ -1334,6 +1416,13 @@ static void play_station(const char *name) {
 
     // Če je že predvajana, ustavi
     if (strcmp(current_station, url) == 0 && pipeline) {
+        {
+            GstBus *bus = gst_element_get_bus(pipeline);
+            if (bus) {
+                gst_bus_remove_signal_watch(bus);
+                gst_object_unref(bus);
+            }
+        }
         gst_element_set_state(pipeline, GST_STATE_NULL);
         gst_object_unref(pipeline);
         pipeline = NULL;
@@ -1342,6 +1431,7 @@ static void play_station(const char *name) {
         gtk_label_set_text(GTK_LABEL(label), "Ni predvajanja...");
         refresh_active_station_color();
         save_last_played(name);
+        update_current_playing_item();
         return;
     }
 
@@ -1360,13 +1450,15 @@ static void play_station(const char *name) {
         current_song[0] = '\0';
         // Dodaj bus handler za metapodatke
         GstBus *bus = gst_element_get_bus(pipeline);
-        gst_bus_add_signal_watch(bus);
-        g_signal_connect(bus, "message", G_CALLBACK(on_gst_message), g_strdup(name));
+    gst_bus_add_signal_watch(bus);
+    /* Connect with destroy notifier so duplicated name is freed when handler is removed */
+    g_signal_connect_data(bus, "message", G_CALLBACK(on_gst_message), g_strdup(name), (GClosureNotify)g_free, 0);
         gst_object_unref(bus);
         gst_element_set_state(pipeline, GST_STATE_PLAYING);
         gtk_label_set_text(GTK_LABEL(label), name);
         save_last_played(name);
         refresh_active_station_color();
+        update_current_playing_item();
     } else {
         gtk_label_set_text(GTK_LABEL(label), "Napaka pri predvajanju!");
     }
@@ -1620,6 +1712,17 @@ int main(int argc, char **argv) {
      gtk_menu_shell_append(GTK_MENU_SHELL(menu), version_item);
     show_item = gtk_menu_item_new_with_label("Prikaži okno");
     /* Dodaj naprej/nazaj menijske vnose in predvajaj/pavza */
+    /* Postavki za prikaz trenutno predvajane postaje in pesmi (dinamično) */
+    current_station_item = gtk_menu_item_new_with_label("");
+    gtk_widget_set_sensitive(current_station_item, FALSE);
+    gtk_widget_hide(current_station_item);
+    current_playing_item = gtk_menu_item_new_with_label("");
+    gtk_widget_set_sensitive(current_playing_item, FALSE);
+    /* skrij privzeto, dokler ni predvajanja */
+    gtk_widget_hide(current_playing_item);
+    /* separator neposredno pod pesmijo */
+    sep_after_song = gtk_separator_menu_item_new();
+    gtk_widget_hide(sep_after_song);
     play_item = gtk_menu_item_new_with_label("Predvajaj");
     GtkWidget *next_item = gtk_menu_item_new_with_label("Naprej");
     GtkWidget *prev_item = gtk_menu_item_new_with_label("Nazaj");
@@ -1637,6 +1740,10 @@ int main(int argc, char **argv) {
     g_signal_connect(quit_item, "activate", G_CALLBACK(quit_app), NULL);
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), show_item);
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), sep_top);
+    /* Najprej prikaži katera postaja trenutno predvaja (če obstaja) */
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), current_station_item);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), current_playing_item);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), sep_after_song);
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), play_item);
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), sep_after_play);
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), next_item);
@@ -1646,10 +1753,15 @@ int main(int argc, char **argv) {
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), quit_item);
     gtk_widget_show_all(menu);
     app_indicator_set_menu(indicator, GTK_MENU(menu));
+    /* Ko se menu prikaže, osveži prikaz trenutne postaje. Nekateri paneli morda sprožijo 'map' raje kot 'show'. */
+    g_signal_connect(menu, "show", G_CALLBACK(on_tray_menu_show), NULL);
+    g_signal_connect(menu, "map", G_CALLBACK(on_tray_menu_show), NULL);
     // Posodobi labelo ob zagonu (če je okno že prikazano)
     update_show_item_label();
     // Posodobi Play/Pause labelo v meniju glede na trenutno stanje
     update_play_item_label();
+    // Inicialno osveži current_playing_item
+    update_current_playing_item();
 
     // Okno je ob zagonu skrito (če želiš)
 
