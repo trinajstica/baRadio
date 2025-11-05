@@ -1011,6 +1011,7 @@ gboolean on_filter_entry_key_press(GtkWidget *entry, GdkEventKey *event, gpointe
                         gtk_button_set_image(GTK_BUTTON(play_button), img);
                         gtk_widget_set_tooltip_text(play_button, "Predvajaj");
                         update_play_item_label();
+                        update_current_playing_item();
                     }
                 } else {
                     // Predvajaj izbrano postajo
@@ -1021,6 +1022,7 @@ gboolean on_filter_entry_key_press(GtkWidget *entry, GdkEventKey *event, gpointe
                         gtk_button_set_image(GTK_BUTTON(play_button), img);
                         gtk_widget_set_tooltip_text(play_button, "Pavza");
                         update_play_item_label();
+                        update_current_playing_item();
                     }
                 }
                 g_free(name);
@@ -1392,6 +1394,9 @@ void on_station_activated(GtkTreeView *treeview, GtkTreePath *path, GtkTreeViewC
                     gtk_button_set_image(GTK_BUTTON(play_button), img);
                     gtk_widget_set_tooltip_text(play_button, "Predvajaj");
                 }
+                // Posodobi tray meni
+                update_play_item_label();
+                update_current_playing_item();
             } else {
                 // Predvajaj izbrano postajo
                 play_station(name);
@@ -1401,6 +1406,9 @@ void on_station_activated(GtkTreeView *treeview, GtkTreePath *path, GtkTreeViewC
                     gtk_button_set_image(GTK_BUTTON(play_button), img);
                     gtk_widget_set_tooltip_text(play_button, "Pavza");
                 }
+                // Posodobi tray meni
+                update_play_item_label();
+                update_current_playing_item();
             }
             g_free(name);
         }
@@ -1431,6 +1439,7 @@ static void play_station(const char *name) {
         gtk_label_set_text(GTK_LABEL(label), "Ni predvajanja...");
         refresh_active_station_color();
         save_last_played(name);
+        update_play_item_label();
         update_current_playing_item();
         return;
     }
@@ -1458,6 +1467,7 @@ static void play_station(const char *name) {
         gtk_label_set_text(GTK_LABEL(label), name);
         save_last_played(name);
         refresh_active_station_color();
+        update_play_item_label();
         update_current_playing_item();
     } else {
         gtk_label_set_text(GTK_LABEL(label), "Napaka pri predvajanju!");
