@@ -122,27 +122,14 @@ Postaje in nastavitve so shranjene v SQLite bazi: `~/.config/baradio/baradio.db`
 
 Spodaj so prikazi aplikacije, ki predstavljajo osnovni izgled vmesnika.
 
-![Glavni vmesnik - seznam postaj](./slika1.png)
-
-Kratek opis: glavni pogled s seznamom postaj in kontrolami za predvajanje.
-
-![Predvajanje skladbe](./slika2.png)
-
-Kratek opis: okno s prikazom trenutne predvajane skladbe in metapodatki.
-
-![Iskanje postaj](./slika3.png)
-
-Kratek opis: primer uporabe iskalnega polja za filtriranje seznama postaj.
-
-![Tray ikona in kontrola](./slika4.png)
-
-Kratek opis: tray ikona z osnovnimi kontrolami (play/pause, stop).
-
-Ikona aplikacije (SVG):
-
-<img src="./icons/baradio.svg" width="128" alt="Ikona aplikacije" />
-
-![Priljubljene](./slika6.png)
+<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; align-items: center; justify-items: center;">
+	<img src="./slika1.png" alt="slika1" style="max-width:100%; height:auto;" />
+	<img src="./slika2.png" alt="slika2" style="max-width:100%; height:auto;" />
+	<img src="./slika3.png" alt="slika3" style="max-width:100%; height:auto;" />
+	<img src="./slika4.png" alt="slika4" style="max-width:100%; height:auto;" />
+	<img src="./slika6.png" alt="slika6" style="max-width:100%; height:auto;" />
+	<img src="./icons/baradio.svg" alt="Ikona aplikacije" style="max-width:100%; height:auto; width:128px;" />
+</div>
 
 
 ## Avtor
