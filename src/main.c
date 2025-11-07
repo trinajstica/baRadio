@@ -18,7 +18,7 @@
 void on_play_clicked(GtkButton *button, gpointer user_data);
 
 // Verzija aplikacije
-static const char *version = "baRadio v2.1, 2025";
+static const char *version = "baRadio v2.2, 2025";
 
 // Forward deklaracije
 static void on_gst_message(GstBus *bus, GstMessage *msg, gpointer user_data);
@@ -30,6 +30,14 @@ static void load_station_urls();
 static void update_play_item_label();
 static void on_tray_menu_show(GtkWidget *menu, gpointer user_data);
 static void update_current_playing_item();
+// Settings / favorites helpers
+static char *get_setting(const char *key);
+static void set_setting(const char *key, const char *value);
+void on_toggle_favorite(GtkMenuItem *item, gpointer user_data);
+static void on_fav_toggle_clicked(GtkButton *button, gpointer user_data);
+// Globals for favorite filter
+static gboolean favorite_filter_enabled = FALSE;
+static GtkWidget *fav_toggle_button = NULL;
 
 // Extern deklaracije za globalne spremenljivke (definirane nižje v kodi)
 extern GstElement *pipeline;
@@ -214,6 +222,102 @@ static const char *get_lock_path() {
         }
     }
     return lock_path;
+}
+
+// Simple settings helpers (store small key/value pairs in settings table)
+static char *get_setting(const char *key) {
+    sqlite3 *db;
+    char *result = NULL;
+    if (sqlite3_open(get_db_path(), &db) != SQLITE_OK) return NULL;
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(db, "SELECT value FROM settings WHERE key = ?;", -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, key, -1, SQLITE_TRANSIENT);
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            const unsigned char *val = sqlite3_column_text(stmt, 0);
+            if (val) result = g_strdup((const char*)val);
+        }
+        sqlite3_finalize(stmt);
+    }
+    sqlite3_close(db);
+    return result;
+}
+
+static void set_setting(const char *key, const char *value) {
+    sqlite3 *db;
+    if (sqlite3_open(get_db_path(), &db) != SQLITE_OK) return;
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(db, "REPLACE INTO settings (key, value) VALUES (?, ?);", -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, key, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 2, value, -1, SQLITE_TRANSIENT);
+        sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+    }
+    sqlite3_close(db);
+}
+
+// Naloži ikono iz teme kot GdkPixbuf velikosti 'size'
+static GdkPixbuf *load_icon_pixbuf(const char *icon_name, int size) {
+    GtkIconTheme *theme = gtk_icon_theme_get_default();
+    GError *err = NULL;
+    GdkPixbuf *pb = gtk_icon_theme_load_icon(theme, icon_name, size, 0, &err);
+    if (!pb) {
+        if (err) g_clear_error(&err);
+        return NULL;
+    }
+    return pb;
+}
+
+// Recolor pixbuf: nastavi RGB del slikovnih pik (ohrani alpha)
+static GdkPixbuf *recolor_pixbuf(GdkPixbuf *src, GdkRGBA color) {
+    if (!src) return NULL;
+    int w = gdk_pixbuf_get_width(src);
+    int h = gdk_pixbuf_get_height(src);
+    int n = gdk_pixbuf_get_n_channels(src);
+    int rowstride = gdk_pixbuf_get_rowstride(src);
+    gboolean has_alpha = gdk_pixbuf_get_has_alpha(src);
+    if (n < 3) return NULL;
+    GdkPixbuf *dst = gdk_pixbuf_copy(src);
+    guchar *pixels = gdk_pixbuf_get_pixels(dst);
+    for (int y = 0; y < h; y++) {
+        guchar *p = pixels + y * rowstride;
+        for (int x = 0; x < w; x++) {
+            guchar a = has_alpha ? p[3] : 255;
+            if (a != 0) {
+                p[0] = (guchar)(color.red * 255.0);
+                p[1] = (guchar)(color.green * 255.0);
+                p[2] = (guchar)(color.blue * 255.0);
+            }
+            p += n;
+        }
+    }
+    return dst;
+}
+
+// Vrne GtkImage za gumb priljubljenih glede na stanje (enabled -> rumena filled icon)
+static GtkWidget *get_fav_image_for_state(gboolean enabled) {
+    const int size = 20; // velikost ikone v px
+    // poskusi naložiti symbolic emblem
+    GdkPixbuf *pb = load_icon_pixbuf("emblem-favorite-symbolic", size);
+    if (!pb) pb = load_icon_pixbuf("emblem-favorite", size);
+    if (!pb) {
+        // fallback na ime ikone (gtk will handle)
+        return gtk_image_new_from_icon_name("emblem-favorite-symbolic", GTK_ICON_SIZE_BUTTON);
+    }
+    if (enabled) {
+        GdkRGBA yellow = {0};
+        yellow.red = 1.0; yellow.green = 0.84; yellow.blue = 0.0; yellow.alpha = 1.0;
+        GdkPixbuf *col = recolor_pixbuf(pb, yellow);
+        g_object_unref(pb);
+        if (col) {
+            GtkWidget *img = gtk_image_new_from_pixbuf(col);
+            g_object_unref(col);
+            return img;
+        }
+    }
+    // disabled: vrni original (symbolic) kot image
+    GtkWidget *img = gtk_image_new_from_pixbuf(pb);
+    g_object_unref(pb);
+    return img;
 }
 
 // Preveri ali je proces s podanim PID še živ in ali je to naša aplikacija
@@ -612,20 +716,162 @@ gboolean on_treeview_button_press(GtkWidget *treeview, GdkEventButton *event, gp
     (void)user_data;
     if (event->type == GDK_BUTTON_PRESS && event->button == 3) {
         GtkWidget *menu = gtk_menu_new();
+        // Pred desnim klikom poskrbimo, da je vrstica pod kazalcem izbrana
+        int x = (int)event->x;
+        int y = (int)event->y;
+        GtkTreePath *path = NULL;
+        GtkTreeViewColumn *col = NULL;
+        if (gtk_tree_view_get_path_at_pos(GTK_TREE_VIEW(treeview), x, y, &path, &col, NULL, NULL)) {
+            GtkTreeSelection *sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(treeview));
+            gtk_tree_selection_select_path(sel, path);
+            gtk_tree_path_free(path);
+        }
         GtkWidget *add_item = gtk_menu_item_new_with_label("Dodaj postajo");
         GtkWidget *edit_item = gtk_menu_item_new_with_label("Uredi postajo");
         GtkWidget *delete_item = gtk_menu_item_new_with_label("Izbriši postajo");
+        // Dodaj opcijo za priljubljene glede na trenutno stanje izbrane vrstice
+        GtkWidget *fav_item = NULL;
+        GtkTreeSelection *selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(treeview));
+        GtkTreeModel *filter_model = GTK_TREE_MODEL(gtk_tree_view_get_model(GTK_TREE_VIEW(treeview)));
+        GtkTreeIter iter;
+        if (gtk_tree_selection_get_selected(selection, NULL, &iter)) {
+            gchar *fav = NULL;
+            gtk_tree_model_get(filter_model, &iter, 3, &fav, -1);
+            if (fav && strlen(fav) > 0) fav_item = gtk_menu_item_new_with_label("Odstrani iz priljubljenih");
+            else fav_item = gtk_menu_item_new_with_label("Dodaj v priljubljene");
+            g_free(fav);
+        }
         g_signal_connect(add_item, "activate", G_CALLBACK(on_add_station), treeview);
         g_signal_connect(edit_item, "activate", G_CALLBACK(on_edit_station), treeview);
         g_signal_connect(delete_item, "activate", G_CALLBACK(on_delete_station), treeview);
+        if (fav_item) g_signal_connect(fav_item, "activate", G_CALLBACK(on_toggle_favorite), treeview);
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), add_item);
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), edit_item);
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), delete_item);
+        if (fav_item) gtk_menu_shell_append(GTK_MENU_SHELL(menu), fav_item);
         gtk_widget_show_all(menu);
         gtk_menu_popup_at_pointer(GTK_MENU(menu), (GdkEvent*)event);
         return TRUE;
     }
     return FALSE;
+}
+
+// Toggle favorite for currently selected station
+void on_toggle_favorite(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    GtkWidget *treeview = GTK_WIDGET(user_data);
+    GtkTreeSelection *selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(treeview));
+    GtkTreeModel *filter_model = GTK_TREE_MODEL(gtk_tree_view_get_model(GTK_TREE_VIEW(treeview)));
+    GtkTreeIter iter;
+    if (!gtk_tree_selection_get_selected(selection, NULL, &iter)) return;
+    gchar *name = NULL;
+    gtk_tree_model_get(filter_model, &iter, 1, &name, -1);
+    if (!name) return;
+    /* Shrani indeks izbrane vrstice in trenutno stanje filtra preden spremenimo DB */
+    int old_index = -1;
+    GtkTreePath *old_path = gtk_tree_model_get_path(filter_model, &iter);
+    if (old_path) {
+        int depth = gtk_tree_path_get_depth(old_path);
+        int *indices = gtk_tree_path_get_indices(old_path);
+        if (indices && depth > 0) old_index = indices[0];
+        gtk_tree_path_free(old_path);
+    }
+    gboolean viewing_only_favs = favorite_filter_enabled;
+    // Toggle value in DB
+    sqlite3 *db;
+    int newfav = -1;
+    if (sqlite3_open(get_db_path(), &db) == SQLITE_OK) {
+        sqlite3_stmt *stmt;
+        // Preberi trenutno vrednost
+        if (sqlite3_prepare_v2(db, "SELECT favorite FROM stations WHERE name = ? LIMIT 1;", -1, &stmt, NULL) == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, name, -1, SQLITE_TRANSIENT);
+            int fav = 0;
+            if (sqlite3_step(stmt) == SQLITE_ROW) fav = sqlite3_column_int(stmt, 0);
+            sqlite3_finalize(stmt);
+            newfav = fav ? 0 : 1;
+            if (sqlite3_prepare_v2(db, "UPDATE stations SET favorite = ? WHERE name = ?;", -1, &stmt, NULL) == SQLITE_OK) {
+                sqlite3_bind_int(stmt, 1, newfav);
+                sqlite3_bind_text(stmt, 2, name, -1, SQLITE_TRANSIENT);
+                sqlite3_step(stmt);
+                sqlite3_finalize(stmt);
+            }
+        }
+        sqlite3_close(db);
+    }
+    // Osveži store in filter
+    fill_station_store(GTK_LIST_STORE(gtk_tree_model_filter_get_model(GTK_TREE_MODEL_FILTER(filter_model))), NULL);
+    gtk_tree_model_filter_refilter(GTK_TREE_MODEL_FILTER(filter_model));
+    // Osveži UI
+    refresh_active_station_color();
+
+    /* Če smo odstranili priljubljenost medtem ko smo gledali samo priljubljene, element izgine iz modela:
+       v tem primeru izberemo vrstico nad staro pozicijo (old_index - 1) če obstaja, sicer počistimo selekcijo.
+       V vseh drugih primerih poskušamo ponovno izbrati isto postajo po imenu. */
+    if (viewing_only_favs && newfav == 0) {
+        // poskusi izbrati vrstico nad prejšnjo
+        if (old_index > 0) {
+            GtkTreeIter prev_iter;
+            if (gtk_tree_model_iter_nth_child(filter_model, &prev_iter, NULL, old_index - 1)) {
+                GtkTreePath *path = gtk_tree_model_get_path(filter_model, &prev_iter);
+                gtk_tree_view_set_cursor(GTK_TREE_VIEW(treeview), path, NULL, FALSE);
+                gtk_tree_view_scroll_to_cell(GTK_TREE_VIEW(treeview), path, NULL, TRUE, 0.5, 0.0);
+                gtk_tree_path_free(path);
+            } else {
+                // Ni prejšnje vrstice - počistimo selekcijo
+                gtk_tree_selection_unselect_all(selection);
+            }
+        } else {
+            // bila je prva vrstica - izbrišemo selekcijo
+            gtk_tree_selection_unselect_all(selection);
+        }
+    } else {
+        // poskusi ponovno izbrati isto postajo (deluje tako pri dodajanju kot pri odstranitvi, če smo v glavnem seznamu)
+        GtkTreeIter re_iter;
+        gboolean found = FALSE;
+        gboolean valid = gtk_tree_model_get_iter_first(filter_model, &re_iter);
+        while (valid) {
+            gchar *row_name = NULL;
+            gtk_tree_model_get(filter_model, &re_iter, 1, &row_name, -1);
+            if (row_name && strcmp(row_name, name) == 0) {
+                GtkTreePath *path = gtk_tree_model_get_path(filter_model, &re_iter);
+                gtk_tree_view_set_cursor(GTK_TREE_VIEW(treeview), path, NULL, FALSE);
+                gtk_tree_view_scroll_to_cell(GTK_TREE_VIEW(treeview), path, NULL, TRUE, 0.5, 0.0);
+                gtk_tree_path_free(path);
+                g_free(row_name);
+                found = TRUE;
+                break;
+            }
+            g_free(row_name);
+            valid = gtk_tree_model_iter_next(filter_model, &re_iter);
+        }
+        if (!found) {
+            // če ne najdemo (npr. redka situacija), poskusimo izbrati prvo vrstico
+            GtkTreeIter first_iter;
+            if (gtk_tree_model_get_iter_first(filter_model, &first_iter)) {
+                GtkTreePath *path = gtk_tree_model_get_path(filter_model, &first_iter);
+                gtk_tree_view_set_cursor(GTK_TREE_VIEW(treeview), path, NULL, FALSE);
+                gtk_tree_view_scroll_to_cell(GTK_TREE_VIEW(treeview), path, NULL, TRUE, 0.5, 0.0);
+                gtk_tree_path_free(path);
+            }
+        }
+    }
+    g_free(name);
+}
+
+// Handler za klik na headerbar favorite toggle
+static void on_fav_toggle_clicked(GtkButton *button, gpointer user_data) {
+    (void)button; (void)user_data;
+    favorite_filter_enabled = !favorite_filter_enabled;
+    // Shrani v settings
+    set_setting("show_favorites_only", favorite_filter_enabled ? "1" : "0");
+    // Posodobi ikono gumba (lahko uporabimo isti simbol, tu ne spreminjamo ikone barve)
+    if (fav_toggle_button) {
+        GtkWidget *img = get_fav_image_for_state(favorite_filter_enabled);
+        gtk_button_set_image(GTK_BUTTON(fav_toggle_button), img);
+    }
+    // Refiltiraj model
+    GtkTreeModel *filter_model = GTK_TREE_MODEL(gtk_tree_view_get_model(GTK_TREE_VIEW(treeview)));
+    gtk_tree_model_filter_refilter(GTK_TREE_MODEL_FILTER(filter_model));
 }
 
 static GtkWidget *global_filter_entry = NULL;
@@ -1058,6 +1304,14 @@ gboolean on_treeview_key_press(GtkWidget *widget, GdkEventKey *event, gpointer u
 // Funkcija za filtriranje vrstic glede na search_string
 gboolean station_filter_func(GtkTreeModel *model, GtkTreeIter *iter, gpointer data) {
     (void)data;
+    // Če je vključen filter za priljubljene, preveri stolpec 3
+    if (favorite_filter_enabled) {
+        gchar *fav = NULL;
+        gtk_tree_model_get(model, iter, 3, &fav, -1);
+        gboolean isfav = (fav && strlen(fav) > 0);
+        g_free(fav);
+        if (!isfav) return FALSE;
+    }
     if (search_string[0] == '\0') return TRUE;
     gchar *name = NULL;
     gtk_tree_model_get(model, iter, 1, &name, -1);  // Stolpec 1 je ime postaje
@@ -1137,19 +1391,45 @@ int check_or_create_db(const char *db_path) {
         sqlite3_close(db);
         return 0;
     }
-    // Pravilna shema
-    const char *sql = "CREATE TABLE IF NOT EXISTS stations (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, url TEXT NOT NULL);";
+    // Pravilna shema - vključimo polje favorite (INTEGER 0/1)
+    const char *sql = "CREATE TABLE IF NOT EXISTS stations (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, url TEXT NOT NULL, favorite INTEGER DEFAULT 0);";
     rc = sqlite3_exec(db, sql, 0, 0, 0);
     if (rc != SQLITE_OK) {
         fprintf(stderr, "Napaka pri ustvarjanju tabele: %s\n", sqlite3_errmsg(db));
         sqlite3_close(db);
         return 0;
     }
+    /* Če je tabela obstajala brez stolpca 'favorite', dodamo stolpec (varen način: preverimo PRAGMA table_info) */
+    int has_fav = 0;
+    sqlite3_stmt *pstmt;
+    if (sqlite3_prepare_v2(db, "PRAGMA table_info(stations);", -1, &pstmt, NULL) == SQLITE_OK) {
+        while (sqlite3_step(pstmt) == SQLITE_ROW) {
+            const unsigned char *colname = sqlite3_column_text(pstmt, 1);
+            if (colname && strcmp((const char*)colname, "favorite") == 0) {
+                has_fav = 1;
+                break;
+            }
+        }
+        sqlite3_finalize(pstmt);
+    }
+    if (!has_fav) {
+        /* Poskusimo dodati stolpec; če je to neuspešno, nadaljujemo, ker CREATE TABLE zgoraj že poskrbi za novo shemo */
+        const char *addcol = "ALTER TABLE stations ADD COLUMN favorite INTEGER DEFAULT 0;";
+        (void)sqlite3_exec(db, addcol, 0, 0, 0);
+    }
     // Dodaj še tabelo za zadnjo predvajano postajo
     const char *sql2 = "CREATE TABLE IF NOT EXISTS last_played (name TEXT);";
     rc = sqlite3_exec(db, sql2, 0, 0, 0);
     if (rc != SQLITE_OK) {
         fprintf(stderr, "Napaka pri ustvarjanju tabele last_played: %s\n", sqlite3_errmsg(db));
+        sqlite3_close(db);
+        return 0;
+    }
+    /* Tabela za shranjevanje enostavnih nastavitev (shrani state gumba "priljubljeni") */
+    const char *sql3 = "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);";
+    rc = sqlite3_exec(db, sql3, 0, 0, 0);
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "Napaka pri ustvarjanju tabele settings: %s\n", sqlite3_errmsg(db));
         sqlite3_close(db);
         return 0;
     }
@@ -1161,8 +1441,8 @@ int check_or_create_db(const char *db_path) {
 void fill_station_store(GtkListStore *store, const char *filter) {
     sqlite3 *db;
     if (sqlite3_open(get_db_path(), &db) != SQLITE_OK) return;
-    const char *sql_all = "SELECT name FROM stations;";
-    const char *sql_like = "SELECT name FROM stations WHERE name LIKE ?;";
+    const char *sql_all = "SELECT name, favorite FROM stations;";
+    const char *sql_like = "SELECT name, favorite FROM stations WHERE name LIKE ?;";
     sqlite3_stmt *stmt;
     gtk_list_store_clear(store);
     if (filter && strlen(filter) > 0) {
@@ -1172,9 +1452,10 @@ void fill_station_store(GtkListStore *store, const char *filter) {
             sqlite3_bind_text(stmt, 1, like_pattern, -1, SQLITE_TRANSIENT);
             while (sqlite3_step(stmt) == SQLITE_ROW) {
                 const char *name = (const char *)sqlite3_column_text(stmt, 0);
+                int fav = sqlite3_column_int(stmt, 1);
                 GtkTreeIter iter;
                 gtk_list_store_append(store, &iter);
-                gtk_list_store_set(store, &iter, 0, "", 1, name, 2, NULL, -1);
+                gtk_list_store_set(store, &iter, 0, "", 1, name, 2, NULL, 3, fav ? "★" : "", -1);
             }
             sqlite3_finalize(stmt);
         }
@@ -1182,9 +1463,10 @@ void fill_station_store(GtkListStore *store, const char *filter) {
         if (sqlite3_prepare_v2(db, sql_all, -1, &stmt, NULL) == SQLITE_OK) {
             while (sqlite3_step(stmt) == SQLITE_ROW) {
                 const char *name = (const char *)sqlite3_column_text(stmt, 0);
+                int fav = sqlite3_column_int(stmt, 1);
                 GtkTreeIter iter;
                 gtk_list_store_append(store, &iter);
-                gtk_list_store_set(store, &iter, 0, "", 1, name, 2, NULL, -1);
+                gtk_list_store_set(store, &iter, 0, "", 1, name, 2, NULL, 3, fav ? "★" : "", -1);
             }
             sqlite3_finalize(stmt);
         }
@@ -1630,9 +1912,26 @@ int main(int argc, char **argv) {
     g_signal_connect(next_button, "clicked", G_CALLBACK(on_next_clicked), NULL);
     gtk_header_bar_pack_start(GTK_HEADER_BAR(header), next_button);
 
+    // Fav toggle button (prikaz samo priljubljenih) - gumb brez label
+    // Naloži stanje iz settings
+    char *fav_setting = get_setting("show_favorites_only");
+    if (fav_setting) {
+        favorite_filter_enabled = (strcmp(fav_setting, "1") == 0);
+        g_free(fav_setting);
+    } else {
+        favorite_filter_enabled = FALSE;
+    }
+    fav_toggle_button = gtk_button_new();
+    GtkWidget *fav_img = get_fav_image_for_state(favorite_filter_enabled);
+    gtk_button_set_image(GTK_BUTTON(fav_toggle_button), fav_img);
+    gtk_button_set_relief(GTK_BUTTON(fav_toggle_button), GTK_RELIEF_NORMAL);
+    gtk_widget_set_tooltip_text(fav_toggle_button, "Priljubljene (filter)");
+    g_signal_connect(fav_toggle_button, "clicked", G_CALLBACK(on_fav_toggle_clicked), NULL);
+    gtk_header_bar_pack_end(GTK_HEADER_BAR(header), fav_toggle_button);
+
     // TreeView za prikaz postaj v scrollable oknu
-    // 0: ikona (▶ ali ""), 1: ime, 2: unused (za kompatibilnost)
-    station_store = gtk_list_store_new(3, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING);
+    // 0: ikona (▶ ali ""), 1: ime, 2: unused (za kompatibilnost), 3: favorite ("1"/"0")
+    station_store = gtk_list_store_new(4, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING);
     fill_station_store(station_store, NULL);
     load_station_urls();  // Naloži URL-je v hash tabelo
     // Preberi zadnjo predvajano postajo
@@ -1649,6 +1948,13 @@ int main(int argc, char **argv) {
     gtk_tree_view_column_set_sizing(icon_column, GTK_TREE_VIEW_COLUMN_FIXED);
     gtk_tree_view_column_set_fixed_width(icon_column, 30);  // Fiksna širina za ikono
     gtk_tree_view_append_column(GTK_TREE_VIEW(treeview), icon_column);
+    
+    // Stolpec za zvezdico (priljubljeno)
+    GtkCellRenderer *fav_renderer = gtk_cell_renderer_text_new();
+    GtkTreeViewColumn *fav_column = gtk_tree_view_column_new_with_attributes("", fav_renderer, "text", 3, NULL);
+    gtk_tree_view_column_set_sizing(fav_column, GTK_TREE_VIEW_COLUMN_FIXED);
+    gtk_tree_view_column_set_fixed_width(fav_column, 24);
+    gtk_tree_view_append_column(GTK_TREE_VIEW(treeview), fav_column);
     
     // Stolpec za ime postaje
     GtkCellRenderer *name_renderer = gtk_cell_renderer_text_new();
