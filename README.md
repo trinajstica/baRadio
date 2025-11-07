@@ -123,12 +123,12 @@ Postaje in nastavitve so shranjene v SQLite bazi: `~/.config/baradio/baradio.db`
 Spodaj so prikazi aplikacije, ki predstavljajo osnovni izgled vmesnika.
 
 <div style="display:flex; flex-direction:column; gap:12px; align-items:center; justify-content:center;">
-  <img src="./slika1.png" alt="slika1" style="max-width:480px; width:100%; height:auto;" />
-  <img src="./slika2.png" alt="slika2" style="max-width:480px; width:100%; height:auto;" />
-  <img src="./slika3.png" alt="slika3" style="max-width:480px; width:100%; height:auto;" />
-  <img src="./slika4.png" alt="slika4" style="max-width:480px; width:100%; height:auto;" />
-  <img src="./slika6.png" alt="slika6" style="max-width:480px; width:100%; height:auto;" />
-  <img src="./icons/baradio.svg" alt="Ikona aplikacije" style="max-width:128px; height:auto;" />
+  <img src="./slika1.png" alt="slika1" style="width:460px; height:auto;" />
+  <img src="./slika2.png" alt="slika2" style="width:460px; height:auto;" />
+  <img src="./slika3.png" alt="slika3" style="width:460px; height:auto;" />
+  <img src="./slika4.png" alt="slika4" style="width:460px; height:auto;" />
+  <img src="./slika6.png" alt="slika6" style="width:460px; height:auto;" />
+  <img src="./icons/baradio.svg" alt="Ikona aplikacije" style="width:128px; height:auto; display:block; margin:0 auto;" />
 </div>
 
 
