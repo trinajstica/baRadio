@@ -122,13 +122,13 @@ Postaje in nastavitve so shranjene v SQLite bazi: `~/.config/baradio/baradio.db`
 
 Spodaj so prikazi aplikacije, ki predstavljajo osnovni izgled vmesnika.
 
-<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; align-items: center; justify-items: center;">
-	<img src="./slika1.png" alt="slika1" style="max-width:100%; height:auto;" />
-	<img src="./slika2.png" alt="slika2" style="max-width:100%; height:auto;" />
-	<img src="./slika3.png" alt="slika3" style="max-width:100%; height:auto;" />
-	<img src="./slika4.png" alt="slika4" style="max-width:100%; height:auto;" />
-	<img src="./slika6.png" alt="slika6" style="max-width:100%; height:auto;" />
-	<img src="./icons/baradio.svg" alt="Ikona aplikacije" style="max-width:100%; height:auto; width:128px;" />
+<div style="display:flex; flex-direction:column; gap:12px; align-items:center; justify-content:center;">
+  <img src="./slika1.png" alt="slika1" style="max-width:600px; width:100%; height:auto;" />
+  <img src="./slika2.png" alt="slika2" style="max-width:600px; width:100%; height:auto;" />
+  <img src="./slika3.png" alt="slika3" style="max-width:600px; width:100%; height:auto;" />
+  <img src="./slika4.png" alt="slika4" style="max-width:600px; width:100%; height:auto;" />
+  <img src="./slika6.png" alt="slika6" style="max-width:600px; width:100%; height:auto;" />
+  <img src="./icons/baradio.svg" alt="Ikona aplikacije" style="max-width:128px; height:auto;" />
 </div>
 
 
