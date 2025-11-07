@@ -142,6 +142,9 @@ Ikona aplikacije (SVG):
 
 <img src="./icons/baradio.svg" width="128" alt="Ikona aplikacije" />
 
+![Priljubljene](./slika6.png)
+
+
 ## Avtor
 
 BArko & SimOne, 2025 
