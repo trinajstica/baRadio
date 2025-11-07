@@ -127,7 +127,7 @@ Spodaj so prikazi aplikacije, ki predstavljajo osnovni izgled vmesnika.
   <img src="./slika2.png" alt="slika2" style="width:460px; height:auto;" />
   <img src="./slika3.png" alt="slika3" style="width:460px; height:auto;" />
   <img src="./slika4.png" alt="slika4" style="width:460px; height:auto;" />
-  <img src="./slika6.png" alt="slika6" style="width:460px; height:auto;" />
+  <img src="./slika6.png" alt="slika6" style="width:460px; height:auto;" /><br>
   <img src="./icons/baradio.svg" alt="Ikona aplikacije" style="width:128px; height:auto; display:block; margin:0 auto;" />
 </div>
 
