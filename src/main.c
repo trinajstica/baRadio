@@ -18,7 +18,7 @@
 void on_play_clicked(GtkButton *button, gpointer user_data);
 
 // Verzija aplikacije
-static const char *version = "baRadio v2.2, 2025";
+static const char *version = "baRadio v2.3, 2025";
 
 // Forward deklaracije
 static void on_gst_message(GstBus *bus, GstMessage *msg, gpointer user_data);
@@ -1328,14 +1328,6 @@ gboolean station_filter_func(GtkTreeModel *model, GtkTreeIter *iter, gpointer da
     return match;
 }
 
-// Handler za spremembo search entry
-void on_search_entry_changed(GtkEntry *entry, gpointer user_data) {
-    const char *txt = gtk_entry_get_text(entry);
-    strncpy(search_string, txt, sizeof(search_string)-1);
-    search_string[sizeof(search_string)-1] = '\0';
-    gtk_tree_model_filter_refilter(GTK_TREE_MODEL_FILTER(user_data));
-}
-
 // Glavno okno
 GtkWidget *main_window = NULL;
 GtkWidget *label = NULL;
@@ -1346,6 +1338,175 @@ char *last_played_name = NULL;
 GstElement *pipeline = NULL;
 char current_station[512] = "";
 char current_song[256] = "";
+
+// Forward deklaracije
+void reorder_stations(int station_id, int new_pos);
+void fill_station_store(GtkListStore *store, const char *filter);
+
+// Handler za spremembo search entry
+void on_search_entry_changed(GtkEntry *entry, gpointer user_data) {
+    const char *txt = gtk_entry_get_text(entry);
+    strncpy(search_string, txt, sizeof(search_string)-1);
+    search_string[sizeof(search_string)-1] = '\0';
+    gtk_tree_model_filter_refilter(GTK_TREE_MODEL_FILTER(user_data));
+}
+
+// --- DRAG AND DROP HANDLERJI --- //
+
+void on_drag_data_get(GtkWidget *widget, GdkDragContext *context, GtkSelectionData *selection_data, guint info, guint time, gpointer user_data) {
+    (void)widget; (void)context; (void)info; (void)time; (void)user_data;
+    // Nastavimo dummy podatke, saj dejanske podatke dobimo iz modela v on_drag_data_received
+    gtk_selection_data_set_text(selection_data, "station_reorder", -1);
+}
+
+// Handler za drag-motion (potreben za vizualno povratno informacijo in dovoljenje drop-a)
+gboolean on_drag_motion(GtkWidget *widget, GdkDragContext *context, gint x, gint y, guint time, gpointer user_data) {
+    (void)user_data;
+    GtkTreeView *tv = GTK_TREE_VIEW(widget);
+    GtkTreePath *path = NULL;
+    GtkTreeViewDropPosition pos;
+
+    // Če imamo filter ali search, ne dovoli
+    if (favorite_filter_enabled || (search_string[0] != '\0')) {
+        gdk_drag_status(context, 0, time);
+        return FALSE;
+    }
+
+    // Ugotovi, kam ciljamo
+    if (gtk_tree_view_get_dest_row_at_pos(tv, x, y, &path, &pos)) {
+        // Nastavi vizualni indikator
+        gtk_tree_view_set_drag_dest_row(tv, path, pos);
+        gdk_drag_status(context, GDK_ACTION_MOVE, time);
+        gtk_tree_path_free(path);
+        return TRUE;
+    } else {
+        // Če nismo nad vrstico, preveri če smo na koncu seznama
+        // (To je malo bolj zapleteno, zaenkrat dovolimo drop samo na obstoječe vrstice)
+        gdk_drag_status(context, 0, time);
+        return FALSE;
+    }
+}
+
+// Handler za drag-drop (potreben za preprečitev GTK opozorila in sprožitev prenosa podatkov)
+gboolean on_drag_drop(GtkWidget *widget, GdkDragContext *context, gint x, gint y, guint time, gpointer user_data) {
+    (void)user_data; (void)x; (void)y;
+    
+    // Če imamo filter ali search, ne dovoli
+    if (favorite_filter_enabled || (search_string[0] != '\0')) {
+        gtk_drag_finish(context, FALSE, FALSE, time);
+        return TRUE; // Handled
+    }
+
+    // Zahtevaj podatke (to sproži on_drag_data_received)
+    // Uporabimo prvi target (imamo samo enega: text/plain oz. GTK_TARGET_SAME_APP)
+    GdkAtom target = gtk_drag_dest_find_target(widget, context, NULL);
+    if (target != GDK_NONE) {
+        gtk_drag_get_data(widget, context, target, time);
+        return TRUE; // Prepreči default handler
+    }
+    
+    return FALSE;
+}
+
+void on_drag_data_received(GtkWidget *widget, GdkDragContext *context, gint x, gint y, GtkSelectionData *selection_data, guint info, guint time, gpointer user_data) {
+    (void)selection_data; (void)info; (void)user_data;
+    
+    GtkTreeView *tv = GTK_TREE_VIEW(widget);
+    GtkTreeModel *model = gtk_tree_view_get_model(tv);
+    GtkTreePath *dest_path = NULL;
+    GtkTreeViewDropPosition drop_pos;
+
+    // 1. Preveri pogoje
+    if (favorite_filter_enabled || (search_string[0] != '\0')) {
+        gtk_drag_finish(context, FALSE, FALSE, time);
+        return;
+    }
+
+    // 2. Dobi ciljno vrstico
+    if (!gtk_tree_view_get_dest_row_at_pos(tv, x, y, &dest_path, &drop_pos)) {
+        gtk_drag_finish(context, FALSE, FALSE, time);
+        return;
+    }
+
+    // 3. Dobi izvorno vrstico (iz selekcije)
+    GtkTreeSelection *selection = gtk_tree_view_get_selection(tv);
+    GtkTreeIter source_iter;
+    if (!gtk_tree_selection_get_selected(selection, NULL, &source_iter)) {
+        gtk_tree_path_free(dest_path);
+        gtk_drag_finish(context, FALSE, FALSE, time);
+        return;
+    }
+
+    // 4. Preberi podatke
+    gint source_id, source_pos, dest_pos_val;
+    gtk_tree_model_get(model, &source_iter, 4, &source_pos, 5, &source_id, -1);
+
+    GtkTreeIter dest_iter;
+    if (gtk_tree_model_get_iter(model, &dest_iter, dest_path)) {
+        gtk_tree_model_get(model, &dest_iter, 4, &dest_pos_val, -1);
+    } else {
+        gtk_tree_path_free(dest_path);
+        gtk_drag_finish(context, FALSE, FALSE, time);
+        return;
+    }
+    gtk_tree_path_free(dest_path);
+
+    // 5. Izračunaj novo pozicijo
+    int new_pos = dest_pos_val;
+    if (drop_pos == GTK_TREE_VIEW_DROP_AFTER || drop_pos == GTK_TREE_VIEW_DROP_INTO_OR_AFTER) {
+        new_pos++;
+    }
+
+    // KOREKCIJA ZA PREMIK DOL:
+    // Če premikamo postajo dol (source_pos < new_pos), moramo zmanjšati new_pos za 1.
+    // Razlog: Ko vrinemo element na pozicijo X (kjer X > source), se vsi elementi med source in X
+    // premaknejo gor (zmanjšajo indeks). Element, ki je bil prej na X, bo po premiku na X-1.
+    // Če želimo, da je naš element ZA njim (torej na X), je to OK?
+    // Ne, logika v reorder_stations za premik dol je:
+    // UPDATE ... SET position = position - 1 WHERE position > old_pos AND position <= new_pos
+    // To pomeni, da element na new_pos gre na new_pos - 1.
+    // Naš element gre na new_pos.
+    // Torej konča ZA elementom, ki je bil prej na new_pos.
+    // Če smo spustili "BEFORE Y" (kjer Y je na new_pos), želimo biti PRED Y.
+    // Y gre na new_pos - 1. Mi gremo na new_pos. Mi smo ZA Y. NAPAKA.
+    // Morali bi iti na new_pos - 1.
+    
+    if (source_pos < new_pos) {
+        new_pos--;
+    }
+
+    // Izvedi premik v bazi
+    reorder_stations(source_id, new_pos);
+
+    // Osveži model
+    fill_station_store(station_store, NULL);
+    
+    // Poskusi obnoviti selekcijo na premaknjeno postajo
+    // To zahteva iskanje iterja z istim ID-jem v osveženem modelu
+    // (Lahko implementiramo kasneje za boljšo izkušnjo)
+    GtkTreeModel *filter_model = gtk_tree_view_get_model(tv);
+    GtkTreeIter iter;
+    gboolean valid = gtk_tree_model_get_iter_first(filter_model, &iter);
+    while (valid) {
+        gint id;
+        gtk_tree_model_get(filter_model, &iter, 5, &id, -1);
+        if (id == source_id) {
+            GtkTreePath *new_path = gtk_tree_model_get_path(filter_model, &iter);
+            gtk_tree_selection_select_iter(selection, &iter);
+            gtk_tree_view_scroll_to_cell(tv, new_path, NULL, TRUE, 0.5, 0.0);
+            gtk_tree_path_free(new_path);
+            break;
+        }
+        valid = gtk_tree_model_iter_next(filter_model, &iter);
+    }
+
+    gtk_drag_finish(context, TRUE, FALSE, time);
+    
+    // Prepreči default handler (GTK warning fix)
+    g_signal_stop_emission_by_name(widget, "drag-data-received");
+}
+
+
 // Handler za GStreamer bus message (prikaz metapodatkov skladbe)
 static void on_gst_message(GstBus *bus, GstMessage *msg, gpointer user_data) {
     (void)bus;
@@ -1392,7 +1553,8 @@ int check_or_create_db(const char *db_path) {
         return 0;
     }
     // Pravilna shema - vključimo polje favorite (INTEGER 0/1)
-    const char *sql = "CREATE TABLE IF NOT EXISTS stations (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, url TEXT NOT NULL, favorite INTEGER DEFAULT 0);";
+    // Pravilna shema - vključimo polje favorite (INTEGER 0/1) in position (INTEGER)
+    const char *sql = "CREATE TABLE IF NOT EXISTS stations (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, url TEXT NOT NULL, favorite INTEGER DEFAULT 0, position INTEGER DEFAULT 0);";
     rc = sqlite3_exec(db, sql, 0, 0, 0);
     if (rc != SQLITE_OK) {
         fprintf(stderr, "Napaka pri ustvarjanju tabele: %s\n", sqlite3_errmsg(db));
@@ -1401,13 +1563,14 @@ int check_or_create_db(const char *db_path) {
     }
     /* Če je tabela obstajala brez stolpca 'favorite', dodamo stolpec (varen način: preverimo PRAGMA table_info) */
     int has_fav = 0;
+    int has_pos = 0;
     sqlite3_stmt *pstmt;
     if (sqlite3_prepare_v2(db, "PRAGMA table_info(stations);", -1, &pstmt, NULL) == SQLITE_OK) {
         while (sqlite3_step(pstmt) == SQLITE_ROW) {
             const unsigned char *colname = sqlite3_column_text(pstmt, 1);
-            if (colname && strcmp((const char*)colname, "favorite") == 0) {
-                has_fav = 1;
-                break;
+            if (colname) {
+                if (strcmp((const char*)colname, "favorite") == 0) has_fav = 1;
+                if (strcmp((const char*)colname, "position") == 0) has_pos = 1;
             }
         }
         sqlite3_finalize(pstmt);
@@ -1417,6 +1580,14 @@ int check_or_create_db(const char *db_path) {
         const char *addcol = "ALTER TABLE stations ADD COLUMN favorite INTEGER DEFAULT 0;";
         (void)sqlite3_exec(db, addcol, 0, 0, 0);
     }
+    if (!has_pos) {
+        const char *addcol = "ALTER TABLE stations ADD COLUMN position INTEGER DEFAULT 0;";
+        (void)sqlite3_exec(db, addcol, 0, 0, 0);
+        // Inicializiraj pozicije za obstoječe postaje, da bodo enake ID-ju (ohrani obstoječ vrstni red vnosa)
+        const char *init_pos = "UPDATE stations SET position = id WHERE position = 0;";
+        (void)sqlite3_exec(db, init_pos, 0, 0, 0);
+    }
+
     // Dodaj še tabelo za zadnjo predvajano postajo
     const char *sql2 = "CREATE TABLE IF NOT EXISTS last_played (name TEXT);";
     rc = sqlite3_exec(db, sql2, 0, 0, 0);
@@ -1441,8 +1612,9 @@ int check_or_create_db(const char *db_path) {
 void fill_station_store(GtkListStore *store, const char *filter) {
     sqlite3 *db;
     if (sqlite3_open(get_db_path(), &db) != SQLITE_OK) return;
-    const char *sql_all = "SELECT name, favorite FROM stations;";
-    const char *sql_like = "SELECT name, favorite FROM stations WHERE name LIKE ?;";
+    // Sortiraj po position ASC
+    const char *sql_all = "SELECT name, favorite, position, id FROM stations ORDER BY position ASC;";
+    const char *sql_like = "SELECT name, favorite, position, id FROM stations WHERE name LIKE ? ORDER BY position ASC;";
     sqlite3_stmt *stmt;
     gtk_list_store_clear(store);
     if (filter && strlen(filter) > 0) {
@@ -1453,9 +1625,11 @@ void fill_station_store(GtkListStore *store, const char *filter) {
             while (sqlite3_step(stmt) == SQLITE_ROW) {
                 const char *name = (const char *)sqlite3_column_text(stmt, 0);
                 int fav = sqlite3_column_int(stmt, 1);
+                int pos = sqlite3_column_int(stmt, 2);
+                int id = sqlite3_column_int(stmt, 3);
                 GtkTreeIter iter;
                 gtk_list_store_append(store, &iter);
-                gtk_list_store_set(store, &iter, 0, "", 1, name, 2, NULL, 3, fav ? "★" : "", -1);
+                gtk_list_store_set(store, &iter, 0, "", 1, name, 2, NULL, 3, fav ? "★" : "", 4, pos, 5, id, -1);
             }
             sqlite3_finalize(stmt);
         }
@@ -1464,14 +1638,189 @@ void fill_station_store(GtkListStore *store, const char *filter) {
             while (sqlite3_step(stmt) == SQLITE_ROW) {
                 const char *name = (const char *)sqlite3_column_text(stmt, 0);
                 int fav = sqlite3_column_int(stmt, 1);
+                int pos = sqlite3_column_int(stmt, 2);
+                int id = sqlite3_column_int(stmt, 3);
                 GtkTreeIter iter;
                 gtk_list_store_append(store, &iter);
-                gtk_list_store_set(store, &iter, 0, "", 1, name, 2, NULL, 3, fav ? "★" : "", -1);
+                gtk_list_store_set(store, &iter, 0, "", 1, name, 2, NULL, 3, fav ? "★" : "", 4, pos, 5, id, -1);
             }
             sqlite3_finalize(stmt);
         }
     }
     sqlite3_close(db);
+}
+
+// Funkcija za preurejanje postaj v bazi
+// Premakne postajo z danim ID-jem na novo pozicijo in ustrezno zamakne ostale
+// Izboljšana verzija: Renormalizira vse pozicije, da so zvezne (1, 2, 3...)
+void reorder_stations(int station_id, int new_pos) {
+    sqlite3 *db;
+    if (sqlite3_open(get_db_path(), &db) != SQLITE_OK) return;
+
+    // 1. Preberi vse postaje v trenutnem vrstnem redu (po position ASC)
+    // Shranimo ID-je v array
+    struct StationInfo {
+        int id;
+        int pos;
+    };
+    struct StationInfo *stations = NULL;
+    int count = 0;
+
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(db, "SELECT id, position FROM stations ORDER BY position ASC;", -1, &stmt, NULL) == SQLITE_OK) {
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            stations = realloc(stations, sizeof(struct StationInfo) * (count + 1));
+            stations[count].id = sqlite3_column_int(stmt, 0);
+            stations[count].pos = sqlite3_column_int(stmt, 1);
+            count++;
+        }
+        sqlite3_finalize(stmt);
+    }
+
+    if (count == 0) {
+        sqlite3_close(db);
+        if (stations) free(stations);
+        return;
+    }
+
+    // 2. Poišči trenutni indeks premaknjene postaje v arrayu
+    int current_idx = -1;
+    for (int i = 0; i < count; i++) {
+        if (stations[i].id == station_id) {
+            current_idx = i;
+            break;
+        }
+    }
+
+    if (current_idx == -1) {
+        sqlite3_close(db);
+        free(stations);
+        return;
+    }
+
+    // 3. Simuliraj premik v arrayu
+    // new_pos je "absolutna" pozicija, ki jo želimo.
+    // Vendar, ker so pozicije v bazi lahko "luknjaste" ali ne-zvezne, moramo new_pos preslikati v indeks.
+    // Ampak, ker UI uporablja vrednosti iz baze, je new_pos ena izmed obstoječih vrednosti (ali +1).
+    // Boljši pristop:
+    // Ciljni indeks določimo glede na to, kam smo spustili.
+    // Če smo spustili na vrstico z indeksom J, in drop_pos je BEFORE, potem želimo nov indeks J.
+    // Če je AFTER, želimo indeks J+1.
+    // Težava: `new_pos` parameter funkcije je trenutno "vrednost pozicije", ne indeks.
+    // Moramo ugotoviti, kateri indeks v arrayu ustreza tej poziciji.
+    
+    // Poenostavitev:
+    // Namesto da se zanašamo na `new_pos` kot vrednost, bi bilo bolje, če bi `on_drag_data_received`
+    // poslal ID ciljne postaje in smer (before/after).
+    // Ampak, ker imamo `new_pos` (vrednost), poskusimo najti, kam to paše.
+    
+    // Poiščimo indeks, kjer je stations[i].pos >= new_pos.
+    // To bo naš ciljni indeks za vrivanje.
+    int target_idx = count; // Default na konec
+    for (int i = 0; i < count; i++) {
+        if (stations[i].pos >= new_pos) {
+            target_idx = i;
+            break;
+        }
+    }
+
+    // Premakni element v arrayu
+    // Iz current_idx na target_idx
+    struct StationInfo temp = stations[current_idx];
+    
+    // Če premikamo dol (current < target)
+    // Ker smo current že odstranili (logično), se vsi indeksi > current zmanjšajo za 1.
+    // Če je target_idx > current_idx, moramo target_idx zmanjšati za 1, da dobimo pravi indeks po odstranitvi.
+    // Ampak pozor: logika zgoraj (loop) najde prvi element, ki ima pos >= new_pos.
+    // Če smo premaknili element dol, bo new_pos večji od njegove trenutne pozicije.
+    
+    // Preprostejša logika z arrayem:
+    // Naredimo nov array
+    struct StationInfo *new_stations = malloc(sizeof(struct StationInfo) * count);
+    int dest_ptr = 0;
+    
+    // Vstavimo vse razen premaknjene postaje, na prava mesta
+    for (int i = 0; i < count; i++) {
+        if (i == current_idx) continue; // Preskoči premaknjeno postajo
+        
+        // Če smo na mestu, kamor želimo vstaviti (target_idx), vstavimo zdaj
+        // Ampak paziti moramo: če je target_idx > current_idx, smo "preskočili" eno mesto v originalnem loopu.
+        // To je zapleteno.
+        
+        // Vrnitev na preprosto logiko:
+        // Uporabimo SQL transakcijo za posodobitev vseh pozicij na 10, 20, 30...
+        // S tem zagotovimo luknje za lažje vstavljanje v prihodnje in normalizacijo.
+    }
+    free(new_stations); // neuporabljeno
+    
+    // --- Implementacija z SQL UPDATE in normalizacijo ---
+    // 1. Izvedi premik kot prej (relativni shift)
+    // 2. Preberi vse in posodobi na čiste vrednosti (1, 2, 3...)
+    
+    char *err_msg = NULL;
+    sqlite3_exec(db, "BEGIN TRANSACTION;", 0, 0, 0);
+
+    // Dobi staro pozicijo (točno)
+    int old_pos = stations[current_idx].pos;
+
+    if (new_pos > old_pos) {
+        // Premik dol
+        char sql[256];
+        snprintf(sql, sizeof(sql), "UPDATE stations SET position = position - 1 WHERE position > %d AND position <= %d;", old_pos, new_pos);
+        sqlite3_exec(db, sql, 0, 0, &err_msg);
+    } else if (new_pos < old_pos) {
+        // Premik gor
+        char sql[256];
+        snprintf(sql, sizeof(sql), "UPDATE stations SET position = position + 1 WHERE position >= %d AND position < %d;", new_pos, old_pos);
+        sqlite3_exec(db, sql, 0, 0, &err_msg);
+    }
+    
+    if (err_msg) {
+        printf("SQL Error (shift): %s\n", err_msg);
+        sqlite3_free(err_msg);
+        err_msg = NULL;
+    }
+
+    // Nastavi novo pozicijo
+    char sql_update[256];
+    snprintf(sql_update, sizeof(sql_update), "UPDATE stations SET position = %d WHERE id = %d;", new_pos, station_id);
+    sqlite3_exec(db, sql_update, 0, 0, &err_msg);
+    
+    if (err_msg) {
+        printf("SQL Error (update): %s\n", err_msg);
+        sqlite3_free(err_msg);
+        err_msg = NULL;
+    }
+
+    // --- NORMALIZACIJA ---
+    // Sedaj, ko je vrstni red "pravilen" (glede na vrednosti),
+    // preštevilčimo vse od 1 naprej, da bo čisto.
+    // Ker SQLite nima enostavnega "ROW_NUMBER() UPDATE", moramo to narediti v aplikaciji ali s temp tabelo.
+    // Najlažje: preberi ID-je sortirane po position, in jih posodobi.
+    
+    // Moramo na novo prebrati, ker so se position spremenile (znotraj transakcije!)
+    sqlite3_stmt *stmt2;
+    // Pripravi seznam ID-jev v novem vrstnem redu
+    int *ids = malloc(sizeof(int) * count);
+    int new_count = 0;
+    if (sqlite3_prepare_v2(db, "SELECT id FROM stations ORDER BY position ASC;", -1, &stmt2, NULL) == SQLITE_OK) {
+        while (sqlite3_step(stmt2) == SQLITE_ROW) {
+            ids[new_count++] = sqlite3_column_int(stmt2, 0);
+        }
+        sqlite3_finalize(stmt2);
+    }
+    
+    // Posodobi vsakega
+    for (int i = 0; i < new_count; i++) {
+        char sql_norm[128];
+        snprintf(sql_norm, sizeof(sql_norm), "UPDATE stations SET position = %d WHERE id = %d;", i + 1, ids[i]);
+        sqlite3_exec(db, sql_norm, 0, 0, NULL);
+    }
+    free(ids);
+
+    sqlite3_exec(db, "COMMIT;", 0, 0, 0);
+    sqlite3_close(db);
+    free(stations);
 }
 
 // Globalni kazalec na tray menu postavko za prikaz/skritje okna
@@ -1930,8 +2279,9 @@ int main(int argc, char **argv) {
     gtk_header_bar_pack_end(GTK_HEADER_BAR(header), fav_toggle_button);
 
     // TreeView za prikaz postaj v scrollable oknu
-    // 0: ikona (▶ ali ""), 1: ime, 2: unused (za kompatibilnost), 3: favorite ("1"/"0")
-    station_store = gtk_list_store_new(4, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING);
+    // TreeView za prikaz postaj v scrollable oknu
+    // 0: ikona (▶ ali ""), 1: ime, 2: unused (za kompatibilnost), 3: favorite ("1"/"0"), 4: position (int), 5: id (int)
+    station_store = gtk_list_store_new(6, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_INT, G_TYPE_INT);
     fill_station_store(station_store, NULL);
     load_station_urls();  // Naloži URL-je v hash tabelo
     // Preberi zadnjo predvajano postajo
@@ -1941,6 +2291,15 @@ int main(int argc, char **argv) {
     gtk_tree_model_filter_set_visible_func(GTK_TREE_MODEL_FILTER(filter_model), station_filter_func, NULL, NULL);
     treeview = gtk_tree_view_new_with_model(filter_model);
     gtk_tree_view_set_headers_visible(GTK_TREE_VIEW(treeview), FALSE);
+
+    // Omogoči Drag & Drop
+    GtkTargetEntry entries[] = { {"text/plain", GTK_TARGET_SAME_APP, 0} };
+    gtk_tree_view_enable_model_drag_source(GTK_TREE_VIEW(treeview), GDK_BUTTON1_MASK, entries, 1, GDK_ACTION_MOVE);
+    gtk_tree_view_enable_model_drag_dest(GTK_TREE_VIEW(treeview), entries, 1, GDK_ACTION_MOVE);
+    g_signal_connect(treeview, "drag-data-get", G_CALLBACK(on_drag_data_get), NULL);
+    g_signal_connect(treeview, "drag-data-received", G_CALLBACK(on_drag_data_received), NULL);
+    g_signal_connect(treeview, "drag-motion", G_CALLBACK(on_drag_motion), NULL);
+    g_signal_connect(treeview, "drag-drop", G_CALLBACK(on_drag_drop), NULL);
     
     // Stolpec za ikono
     GtkCellRenderer *icon_renderer = gtk_cell_renderer_text_new();
