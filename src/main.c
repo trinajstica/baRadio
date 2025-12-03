@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <signal.h>
+#include <limits.h>
 
 
 #include <gio/gio.h>
@@ -18,7 +19,7 @@
 void on_play_clicked(GtkButton *button, gpointer user_data);
 
 // Verzija aplikacije
-static const char *version = "baRadio v2.3, 2025";
+static const char *version = "baRadio v2.4, 2025";
 
 // Forward deklaracije
 static void on_gst_message(GstBus *bus, GstMessage *msg, gpointer user_data);
@@ -2383,10 +2384,48 @@ int main(int argc, char **argv) {
         // Tray ikona (AppIndicator)
     AppIndicator *indicator = app_indicator_new(
         "baradio-indicator",
-        "radio",
+        "baradio",
         APP_INDICATOR_CATEGORY_APPLICATION_STATUS
     );
     app_indicator_set_status(indicator, APP_INDICATOR_STATUS_ACTIVE);
+
+    /* If the icon is not available in the current GTK icon theme under the name 'baradio',
+     * try to set a pixmap fallback (exported into /usr/local/share/pixmaps by the installer)
+     * or the absolute path to the scalable SVG. This provides a fallback on systems that
+     * do not immediately refresh the icon cache or don't support theme SVGs for tray icons.
+     */
+    GtkIconTheme *theme = gtk_icon_theme_get_default();
+    if (!gtk_icon_theme_has_icon(theme, "baradio")) {
+        gboolean icon_set = FALSE;
+        /* Check for icon next to the executable first (AppImage/local installs) */
+        char exe_path[PATH_MAX];
+        ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+        if (len != -1) {
+            exe_path[len] = '\0';
+            gchar *exe_dir = g_path_get_dirname(exe_path);
+            gchar *exe_svg = g_build_filename(exe_dir, "baradio.svg", NULL);
+            gchar *exe_png = g_build_filename(exe_dir, "baradio.png", NULL);
+            if (g_file_test(exe_svg, G_FILE_TEST_EXISTS)) {
+                app_indicator_set_icon_full(indicator, exe_svg, "baRadio");
+                icon_set = TRUE;
+            } else if (g_file_test(exe_png, G_FILE_TEST_EXISTS)) {
+                app_indicator_set_icon_full(indicator, exe_png, "baRadio");
+                icon_set = TRUE;
+            }
+            g_free(exe_dir);
+            g_free(exe_svg);
+            g_free(exe_png);
+        }
+
+        /* If still not set, check system-wide pixmaps / icons */
+        const gchar *png_path = "/usr/local/share/pixmaps/baradio.png";
+        const gchar *svg_path = "/usr/local/share/icons/hicolor/scalable/apps/baradio.svg";
+        if (!icon_set && g_file_test(png_path, G_FILE_TEST_EXISTS)) {
+            app_indicator_set_icon_full(indicator, png_path, "baRadio");
+        } else if (g_file_test(svg_path, G_FILE_TEST_EXISTS)) {
+            app_indicator_set_icon_full(indicator, svg_path, "baRadio");
+        }
+    }
 
     // Tray meni
     GtkWidget *menu = gtk_menu_new();

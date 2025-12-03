@@ -114,7 +114,15 @@ Postaje in nastavitve so shranjene v SQLite bazi: `~/.config/baradio/baradio.db`
 
 ## Opombe
 
-- Ikona za tray mora biti na voljo v sistemski temi ikon pod imenom `radio`
+- Ikona za tray mora biti na voljo v sistemski temi ikon pod imenom `baradio`
+  (Makefile namesti `baradio.svg` v `hicolor/scalable/apps` in, če je na sistemu, ustvari PNG fallback v `hicolor/*x*/apps` ter kopijo v `pixmaps`).
+  Program bo poskušal uporabiti `baradio` iz sistemske teme; če je ta ni prisotna, bo sledil temu redu za iskanje ikone:
+  1. `baradio.svg` v isti mapi, kjer je izvršeni binar (npr. AppImage ali `/usr/local/bin/`),
+  2. `baradio.png` v isti mapi, kjer je izvršeni binar (če je prisoten),
+  3. `/usr/local/share/pixmaps/baradio.png`,
+  4. `/usr/local/share/icons/hicolor/scalable/apps/baradio.svg`.
+  Makefile samodejno kopira `icons/baradio.svg` v `/usr/local/share/icons/hicolor/scalable/apps/` ter tudi v `/usr/local/bin/` ob namestitvi, in če je prisoten `rsvg-convert`, ustvari PNG-je in kopira 48x48 PNG poleg izvršljivega binarja.
+  Ko gradite AppImage (mapa `build-appimage/baradio.AppDir/`), paket vsebuje `baradio.svg` tudi v `usr/bin/` znotraj AppDir, tako da bo aplikacija icon poiskala, ko teče iz AppImage.
 - Program podpira samo en tekoči primerek (single instance)
 - Za predvajanje nekaterih formatov lahko potrebujete dodatne GStreamer vtičnike
 
