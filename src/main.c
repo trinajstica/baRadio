@@ -1508,9 +1508,11 @@ void on_drag_data_received(GtkWidget *widget, GdkDragContext *context, gint x, g
 }
 
 
-// Handler za GStreamer bus message (prikaz metapodatkov skladbe)
+// Handler za GStreamer bus message (prikaz metapodatkov skladbe + napake)
 static void on_gst_message(GstBus *bus, GstMessage *msg, gpointer user_data) {
     (void)bus;
+    GError *err = NULL;
+    gchar *debug = NULL;
     if (GST_MESSAGE_TYPE(msg) == GST_MESSAGE_TAG) {
         GstTagList *tags = NULL;
         gst_message_parse_tag(msg, &tags);
@@ -1540,6 +1542,91 @@ static void on_gst_message(GstBus *bus, GstMessage *msg, gpointer user_data) {
             snprintf(info, sizeof(info), "%s", station_name);
         gtk_label_set_text(GTK_LABEL(label), info);
         gst_tag_list_unref(tags);
+        update_current_playing_item();
+    } else if (GST_MESSAGE_TYPE(msg) == GST_MESSAGE_ERROR) {
+        // Napaka predvajalnika
+        gst_message_parse_error(msg, &err, &debug);
+        const gchar *station_name = (const gchar *)user_data;
+        gchar err_msg[512];
+        if (err && err->message) {
+            snprintf(err_msg, sizeof(err_msg), "Napaka pri predvajanju: %s", err->message);
+        } else {
+            snprintf(err_msg, sizeof(err_msg), "Napaka pri predvajanju");
+        }
+        fprintf(stderr, "GStreamer error (%s): %s\n", station_name ? station_name : "unknown", err ? err->message : "(no message)");
+        if (debug) {
+            fprintf(stderr, "GStreamer debug: %s\n", debug);
+            g_free(debug);
+        }
+        if (err) g_clear_error(&err);
+        // Cleanup pipeline and update UI safely
+        if (pipeline) {
+            GstBus *b = gst_element_get_bus(pipeline);
+            if (b) {
+                gst_bus_remove_signal_watch(b);
+                gst_object_unref(b);
+            }
+            gst_element_set_state(pipeline, GST_STATE_NULL);
+            gst_object_unref(pipeline);
+            pipeline = NULL;
+        }
+        strncpy(current_station, "", sizeof(current_station)-1);
+        strncpy(current_song, "", sizeof(current_song)-1);
+        gtk_label_set_text(GTK_LABEL(label), err_msg);
+        refresh_active_station_color();
+        update_play_item_label();
+        update_current_playing_item();
+        // Poskusi samodejno preklop na naslednjo postajo, če obstaja v filter_model
+        if (treeview && user_data) {
+            const gchar *station_name = (const gchar *)user_data;
+            GtkTreeModel *filter_model = GTK_TREE_MODEL(gtk_tree_view_get_model(GTK_TREE_VIEW(treeview)));
+            GtkTreeIter iter;
+            gboolean valid = gtk_tree_model_get_iter_first(filter_model, &iter);
+            gboolean switched = FALSE;
+            while (valid) {
+                gchar *name = NULL;
+                gtk_tree_model_get(filter_model, &iter, 1, &name, -1);
+                if (name && station_name && strcmp(name, station_name) == 0) {
+                    // najdi naslednjo vrstico
+                    if (gtk_tree_model_iter_next(filter_model, &iter)) {
+                        gchar *next_name = NULL;
+                        gtk_tree_model_get(filter_model, &iter, 1, &next_name, -1);
+                        if (next_name) {
+                            fprintf(stderr, "GStreamer: switching to next station: %s\n", next_name);
+                            // Zaženi naslednjo postajo
+                            play_station(next_name);
+                            g_free(next_name);
+                            switched = TRUE;
+                        }
+                    }
+                    if (name) g_free(name);
+                    break;
+                }
+                if (name) g_free(name);
+                valid = gtk_tree_model_iter_next(filter_model, &iter);
+            }
+            if (!switched) {
+                // Ni naslednje postaje; ustavi, ostanemo v stanju brez predvajanja
+                fprintf(stderr, "GStreamer: no next station, stopping playback\n");
+            }
+        }
+    } else if (GST_MESSAGE_TYPE(msg) == GST_MESSAGE_EOS) {
+        // End-of-stream: stop playback cleanly
+        if (pipeline) {
+            GstBus *b = gst_element_get_bus(pipeline);
+            if (b) {
+                gst_bus_remove_signal_watch(b);
+                gst_object_unref(b);
+            }
+            gst_element_set_state(pipeline, GST_STATE_NULL);
+            gst_object_unref(pipeline);
+            pipeline = NULL;
+        }
+        current_station[0] = '\0';
+        current_song[0] = '\0';
+        gtk_label_set_text(GTK_LABEL(label), "Konec predvajanja");
+        refresh_active_station_color();
+        update_play_item_label();
         update_current_playing_item();
     }
 }
@@ -2091,10 +2178,25 @@ static void play_station(const char *name) {
         current_song[0] = '\0';
         // Dodaj bus handler za metapodatke
         GstBus *bus = gst_element_get_bus(pipeline);
-    gst_bus_add_signal_watch(bus);
-    /* Connect with destroy notifier so duplicated name is freed when handler is removed */
-    g_signal_connect_data(bus, "message", G_CALLBACK(on_gst_message), g_strdup(name), (GClosureNotify)g_free, 0);
-        gst_object_unref(bus);
+        if (bus) {
+            gst_bus_add_signal_watch(bus);
+            /* Connect with destroy notifier so duplicated name is freed when handler is removed */
+            g_signal_connect_data(bus, "message", G_CALLBACK(on_gst_message), g_strdup(name), (GClosureNotify)g_free, 0);
+            gst_object_unref(bus);
+        } else {
+            fprintf(stderr, "GStreamer: failed to get bus for pipeline\n");
+            gtk_label_set_text(GTK_LABEL(label), "Napaka pri predvajanju: ni bus-a");
+            gst_element_set_state(pipeline, GST_STATE_NULL);
+            gst_object_unref(pipeline);
+            pipeline = NULL;
+            current_station[0] = '\0';
+            current_song[0] = '\0';
+            refresh_active_station_color();
+            save_last_played(name);
+            update_play_item_label();
+            update_current_playing_item();
+            return;
+        }
         gst_element_set_state(pipeline, GST_STATE_PLAYING);
         gtk_label_set_text(GTK_LABEL(label), name);
         save_last_played(name);
