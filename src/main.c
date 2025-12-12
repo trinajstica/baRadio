@@ -19,7 +19,7 @@
 void on_play_clicked(GtkButton *button, gpointer user_data);
 
 // Verzija aplikacije
-static const char *version = "baRadio v2.4, 2025";
+static const char *version = "baRadio v2.6, 2025";
 
 // Forward deklaracije
 static void on_gst_message(GstBus *bus, GstMessage *msg, gpointer user_data);
@@ -1553,9 +1553,9 @@ static void on_gst_message(GstBus *bus, GstMessage *msg, gpointer user_data) {
         } else {
             snprintf(err_msg, sizeof(err_msg), "Napaka pri predvajanju");
         }
-        fprintf(stderr, "GStreamer error (%s): %s\n", station_name ? station_name : "unknown", err ? err->message : "(no message)");
+        fprintf(stderr, "GStreamer napaka (%s): %s\n", station_name ? station_name : "unknown", err ? err->message : "(no message)");
         if (debug) {
-            fprintf(stderr, "GStreamer debug: %s\n", debug);
+            fprintf(stderr, "GStreamer razhroščevanje: %s\n", debug);
             g_free(debug);
         }
         if (err) g_clear_error(&err);
@@ -1592,7 +1592,7 @@ static void on_gst_message(GstBus *bus, GstMessage *msg, gpointer user_data) {
                         gchar *next_name = NULL;
                         gtk_tree_model_get(filter_model, &iter, 1, &next_name, -1);
                         if (next_name) {
-                            fprintf(stderr, "GStreamer: switching to next station: %s\n", next_name);
+                            fprintf(stderr, "GStreamer: preklapljanje na naslednjo postajo: %s\n", next_name);
                             // Zaženi naslednjo postajo
                             play_station(next_name);
                             g_free(next_name);
@@ -1607,7 +1607,7 @@ static void on_gst_message(GstBus *bus, GstMessage *msg, gpointer user_data) {
             }
             if (!switched) {
                 // Ni naslednje postaje; ustavi, ostanemo v stanju brez predvajanja
-                fprintf(stderr, "GStreamer: no next station, stopping playback\n");
+                fprintf(stderr, "GStreamer: ni naslednje postaje, ustavljam predvajanje\n");
             }
         }
     } else if (GST_MESSAGE_TYPE(msg) == GST_MESSAGE_EOS) {
@@ -2184,7 +2184,7 @@ static void play_station(const char *name) {
             g_signal_connect_data(bus, "message", G_CALLBACK(on_gst_message), g_strdup(name), (GClosureNotify)g_free, 0);
             gst_object_unref(bus);
         } else {
-            fprintf(stderr, "GStreamer: failed to get bus for pipeline\n");
+            fprintf(stderr, "GStreamer: napaka pri pridobivanju busa za pipeline\n");
             gtk_label_set_text(GTK_LABEL(label), "Napaka pri predvajanju: ni bus-a");
             gst_element_set_state(pipeline, GST_STATE_NULL);
             gst_object_unref(pipeline);
