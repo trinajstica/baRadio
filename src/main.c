@@ -294,30 +294,64 @@ static GdkPixbuf *recolor_pixbuf(GdkPixbuf *src, GdkRGBA color) {
     return dst;
 }
 
-// Vrne GtkImage za gumb priljubljenih glede na stanje (enabled -> rumena filled icon)
+// Return GtkImage for the favorites button based on state (enabled -> yellow filled icon, disabled -> monochrome)
 static GtkWidget *get_fav_image_for_state(gboolean enabled) {
-    const int size = 20; // velikost ikone v px
-    // poskusi naložiti symbolic emblem
-    GdkPixbuf *pb = load_icon_pixbuf("emblem-favorite-symbolic", size);
-    if (!pb) pb = load_icon_pixbuf("emblem-favorite", size);
+    const int size = 20; // icon size in px
+
+    // Try to load symbolic (monochrome) icon first; if not present, fall back to filled emblem
+    GdkPixbuf *pb_symbolic = load_icon_pixbuf("emblem-favorite-symbolic", size);
+    GdkPixbuf *pb_filled = NULL;
+    GdkPixbuf *pb = NULL;
+    gboolean have_symbolic = FALSE;
+    if (pb_symbolic) {
+        pb = pb_symbolic;
+        have_symbolic = TRUE;
+    } else {
+        pb_filled = load_icon_pixbuf("emblem-favorite", size);
+        pb = pb_filled;
+    }
+
     if (!pb) {
-        // fallback na ime ikone (gtk will handle)
+        // Fallback to icon name - let the theme handle it
         return gtk_image_new_from_icon_name("emblem-favorite-symbolic", GTK_ICON_SIZE_BUTTON);
     }
+
     if (enabled) {
         GdkRGBA yellow = {0};
         yellow.red = 1.0; yellow.green = 0.84; yellow.blue = 0.0; yellow.alpha = 1.0;
         GdkPixbuf *col = recolor_pixbuf(pb, yellow);
-        g_object_unref(pb);
+        if (pb_symbolic) g_object_unref(pb_symbolic);
+        if (pb_filled) g_object_unref(pb_filled);
         if (col) {
             GtkWidget *img = gtk_image_new_from_pixbuf(col);
             g_object_unref(col);
             return img;
         }
+    } else {
+        if (have_symbolic) {
+            // Use symbolic icon so theme provides a monochrome look
+            if (pb_symbolic) g_object_unref(pb_symbolic);
+            if (pb_filled) g_object_unref(pb_filled);
+            return gtk_image_new_from_icon_name("emblem-favorite-symbolic", GTK_ICON_SIZE_BUTTON);
+        } else {
+            // Recolor filled icon to black for a monochrome appearance
+            GdkRGBA black = {0};
+            black.red = 0.0; black.green = 0.0; black.blue = 0.0; black.alpha = 1.0;
+            GdkPixbuf *col = recolor_pixbuf(pb, black);
+            if (pb_symbolic) g_object_unref(pb_symbolic);
+            if (pb_filled) g_object_unref(pb_filled);
+            if (col) {
+                GtkWidget *img = gtk_image_new_from_pixbuf(col);
+                g_object_unref(col);
+                return img;
+            }
+        }
     }
-    // disabled: vrni original (symbolic) kot image
+
+    // Fallback: return the original pixbuf as image
     GtkWidget *img = gtk_image_new_from_pixbuf(pb);
-    g_object_unref(pb);
+    if (pb_symbolic) g_object_unref(pb_symbolic);
+    if (pb_filled) g_object_unref(pb_filled);
     return img;
 }
 
@@ -409,7 +443,7 @@ static void on_add_station(GtkMenuItem *item, gpointer user_data) {
     gtk_label_set_yalign(GTK_LABEL(desc), 0.5f);
     gtk_box_pack_start(GTK_BOX(content), desc, FALSE, FALSE, 8);
 
-    // Vnosna polja v boxu
+    // Input fields in box
     GtkWidget *form_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
     GtkWidget *name_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
     GtkWidget *url_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
@@ -730,7 +764,7 @@ gboolean on_treeview_button_press(GtkWidget *treeview, GdkEventButton *event, gp
         GtkWidget *add_item = gtk_menu_item_new_with_label("Dodaj postajo");
         GtkWidget *edit_item = gtk_menu_item_new_with_label("Uredi postajo");
         GtkWidget *delete_item = gtk_menu_item_new_with_label("Izbriši postajo");
-        // Dodaj opcijo za priljubljene glede na trenutno stanje izbrane vrstice
+        // Add option for favorites depending on the current state of the selected row
         GtkWidget *fav_item = NULL;
         GtkTreeSelection *selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(treeview));
         GtkTreeModel *filter_model = GTK_TREE_MODEL(gtk_tree_view_get_model(GTK_TREE_VIEW(treeview)));
@@ -805,7 +839,7 @@ void on_toggle_favorite(GtkMenuItem *item, gpointer user_data) {
     // Osveži UI
     refresh_active_station_color();
 
-    /* Če smo odstranili priljubljenost medtem ko smo gledali samo priljubljene, element izgine iz modela:
+    /* If we removed a favorite while viewing only favorites, the item disappears from the model:
        v tem primeru izberemo vrstico nad staro pozicijo (old_index - 1) če obstaja, sicer počistimo selekcijo.
        V vseh drugih primerih poskušamo ponovno izbrati isto postajo po imenu. */
     if (viewing_only_favs && newfav == 0) {
@@ -1305,7 +1339,7 @@ gboolean on_treeview_key_press(GtkWidget *widget, GdkEventKey *event, gpointer u
 // Funkcija za filtriranje vrstic glede na search_string
 gboolean station_filter_func(GtkTreeModel *model, GtkTreeIter *iter, gpointer data) {
     (void)data;
-    // Če je vključen filter za priljubljene, preveri stolpec 3
+    // If the favorites filter is enabled, check column 3
     if (favorite_filter_enabled) {
         gchar *fav = NULL;
         gtk_tree_model_get(model, iter, 3, &fav, -1);
@@ -1555,7 +1589,7 @@ static void on_gst_message(GstBus *bus, GstMessage *msg, gpointer user_data) {
         }
         fprintf(stderr, "GStreamer napaka (%s): %s\n", station_name ? station_name : "unknown", err ? err->message : "(no message)");
         if (debug) {
-            fprintf(stderr, "GStreamer razhroščevanje: %s\n", debug);
+            /* debug info suppressed to avoid noisy logs */
             g_free(debug);
         }
         if (err) g_clear_error(&err);
@@ -1592,8 +1626,7 @@ static void on_gst_message(GstBus *bus, GstMessage *msg, gpointer user_data) {
                         gchar *next_name = NULL;
                         gtk_tree_model_get(filter_model, &iter, 1, &next_name, -1);
                         if (next_name) {
-                            fprintf(stderr, "GStreamer: preklapljanje na naslednjo postajo: %s\n", next_name);
-                            // Zaženi naslednjo postajo
+                            // Zaženi naslednjo postajo (log suppressed)
                             play_station(next_name);
                             g_free(next_name);
                             switched = TRUE;
@@ -1607,7 +1640,7 @@ static void on_gst_message(GstBus *bus, GstMessage *msg, gpointer user_data) {
             }
             if (!switched) {
                 // Ni naslednje postaje; ustavi, ostanemo v stanju brez predvajanja
-                fprintf(stderr, "GStreamer: ni naslednje postaje, ustavljam predvajanje\n");
+                /* informational log suppressed */
             }
         }
     } else if (GST_MESSAGE_TYPE(msg) == GST_MESSAGE_EOS) {
@@ -1684,7 +1717,7 @@ int check_or_create_db(const char *db_path) {
         sqlite3_close(db);
         return 0;
     }
-    /* Tabela za shranjevanje enostavnih nastavitev (shrani state gumba "priljubljeni") */
+    /* Table for storing simple settings (stores the state of the "favorites" button) */
     const char *sql3 = "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);";
     rc = sqlite3_exec(db, sql3, 0, 0, 0);
     if (rc != SQLITE_OK) {
@@ -1832,7 +1865,7 @@ void reorder_stations(int station_id, int new_pos) {
         if (i == current_idx) continue; // Preskoči premaknjeno postajo
         
         // Če smo na mestu, kamor želimo vstaviti (target_idx), vstavimo zdaj
-        // Ampak paziti moramo: če je target_idx > current_idx, smo "preskočili" eno mesto v originalnem loopu.
+        // Note: if target_idx > current_idx, we've skipped one slot in the original loop.
         // To je zapleteno.
         
         // Vrnitev na preprosto logiko:
@@ -2232,6 +2265,10 @@ static void load_station_urls() {
 
 int main(int argc, char **argv) {
 
+    // Suppress noisy debug from environment unless user explicitly wants it
+    unsetenv("G_MESSAGES_DEBUG");
+    unsetenv("GST_DEBUG");
+
     // SINGLE INSTANCE: Preveri zaklepno datoteko
     if (!create_lock_file()) {
         fprintf(stderr, "Aplikacija že teče (single instance)!\n");
@@ -2292,11 +2329,11 @@ int main(int argc, char **argv) {
         "  font-size: 15px; \n"
         "  font-weight: bold; \n"
         "  padding: 10px; \n"
-        "  /* Svetlejša barva besedila za boljšo berljivost */\n"
+        "  /* Slightly lighter text color for improved readability */\n"
         "  color: #9ca3af; \n"
         "}\n"
         ".dark #station_label { \n"
-        "  /* Svetlejša barva za dark theme */\n"
+        "  /* Slightly lighter color for dark theme */\n"
         "  color: #f5f7fa; \n"
         "}\n"
         "#station_list { \n"
@@ -2339,7 +2376,7 @@ int main(int argc, char **argv) {
     gtk_box_pack_start(GTK_BOX(vbox), label, FALSE, FALSE, 0);
 
     // Kontrolni gumbi v header baru (prej so bili v ločenem boxu)
-    // Previous gumb
+    // Prejšnja postaja
     GtkWidget *prev_button = gtk_button_new_from_icon_name("media-skip-backward-symbolic", GTK_ICON_SIZE_BUTTON);
     gtk_button_set_relief(GTK_BUTTON(prev_button), GTK_RELIEF_NORMAL);
     gtk_widget_set_tooltip_text(prev_button, "Prejšnja postaja");
@@ -2357,15 +2394,15 @@ int main(int argc, char **argv) {
     // Sinhroniziraj labelo v tray meniju z začetnim stanjem predvajalnika
     update_play_item_label();
 
-    // Next gumb
+    // Naslednja postaja
     GtkWidget *next_button = gtk_button_new_from_icon_name("media-skip-forward-symbolic", GTK_ICON_SIZE_BUTTON);
     gtk_button_set_relief(GTK_BUTTON(next_button), GTK_RELIEF_NORMAL);
     gtk_widget_set_tooltip_text(next_button, "Naslednja postaja");
     g_signal_connect(next_button, "clicked", G_CALLBACK(on_next_clicked), NULL);
     gtk_header_bar_pack_start(GTK_HEADER_BAR(header), next_button);
 
-    // Fav toggle button (prikaz samo priljubljenih) - gumb brez label
-    // Naloži stanje iz settings
+    // Fav toggle button (show only favorites) - button without label
+    // Load state from settings
     char *fav_setting = get_setting("show_favorites_only");
     if (fav_setting) {
         favorite_filter_enabled = (strcmp(fav_setting, "1") == 0);
@@ -2411,7 +2448,7 @@ int main(int argc, char **argv) {
     gtk_tree_view_column_set_fixed_width(icon_column, 30);  // Fiksna širina za ikono
     gtk_tree_view_append_column(GTK_TREE_VIEW(treeview), icon_column);
     
-    // Stolpec za zvezdico (priljubljeno)
+    // Star column (favorite)
     GtkCellRenderer *fav_renderer = gtk_cell_renderer_text_new();
     GtkTreeViewColumn *fav_column = gtk_tree_view_column_new_with_attributes("", fav_renderer, "text", 3, NULL);
     gtk_tree_view_column_set_sizing(fav_column, GTK_TREE_VIEW_COLUMN_FIXED);
