@@ -36,16 +36,14 @@ install:
 		rsvg-convert -w 48 -h 48 icons/baradio.svg -o /usr/local/share/icons/hicolor/48x48/apps/baradio.png; \
 		rsvg-convert -w 64 -h 64 icons/baradio.svg -o /usr/local/share/icons/hicolor/64x64/apps/baradio.png; \
 		rsvg-convert -w 48 -h 48 icons/baradio.svg -o /usr/local/share/pixmaps/baradio.png; \
-		# also place PNG next to executable for direct lookup
 		rsvg-convert -w 48 -h 48 icons/baradio.svg -o /usr/local/bin/baradio.png; \
 	else \
-		# As a fallback, copy the SVG to pixmaps (some runtimes can read it)
 		cp icons/baradio.svg /usr/local/share/pixmaps/baradio.svg; \
 	fi
 	cp baradio.desktop /usr/local/share/applications/baradio.desktop
 	# Update icon cache if available
 	if command -v gtk-update-icon-cache >/dev/null 2>&1; then \
-		gtk-update-icon-cache -f /usr/local/share/icons/hicolor; \
+		gtk-update-icon-cache -f /usr/local/share/icons/hicolor || true; \
 	fi
 
 .PHONY: all clean install
@@ -62,5 +60,5 @@ uninstall:
 	rm -f /usr/local/share/pixmaps/baradio.svg
 	rm -f /usr/local/share/applications/baradio.desktop
 	if command -v gtk-update-icon-cache >/dev/null 2>&1; then \
-		gtk-update-icon-cache -f /usr/local/share/icons/hicolor; \
+		gtk-update-icon-cache -f /usr/local/share/icons/hicolor || true; \
 	fi
