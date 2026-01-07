@@ -968,7 +968,7 @@ void on_play_clicked(GtkButton *button, gpointer user_data) {
                 if (play_button) {
                     GtkWidget *img = gtk_image_new_from_icon_name("media-playback-pause-symbolic", GTK_ICON_SIZE_BUTTON);
                     gtk_button_set_image(GTK_BUTTON(play_button), img);
-                    gtk_widget_set_tooltip_text(play_button, "Pavza");
+                    gtk_widget_set_tooltip_text(play_button, "Ustavi");
                     update_play_item_label();
                     update_current_playing_item();
                 }
@@ -978,7 +978,7 @@ void on_play_clicked(GtkButton *button, gpointer user_data) {
     gtk_widget_grab_focus(treeview);
 }
 
-// Funkcija za pavzo in stop odstranjena, logika bo prenesena v play
+// Funkcija za ustavitev in stop odstranjena, logika bo prenesena v play
 
 static void on_next_clicked(GtkButton *button, gpointer user_data) {
     (void)button; (void)user_data;
@@ -1108,7 +1108,7 @@ gboolean on_main_window_key_press(GtkWidget *widget, GdkEventKey *event, gpointe
                 gst_element_get_state(pipeline, &state, NULL, 0);
                 if (state == GST_STATE_PLAYING) {
                     gst_element_set_state(pipeline, GST_STATE_PAUSED);
-                    gtk_label_set_text(GTK_LABEL(label), "Pavza...");
+                    gtk_label_set_text(GTK_LABEL(label), "Ustavi...");
                 } else if (state == GST_STATE_PAUSED) {
                     gst_element_set_state(pipeline, GST_STATE_PLAYING);
                     gtk_label_set_text(GTK_LABEL(label), strlen(current_song) > 0 ? current_song : "Predvajanje...");
@@ -1301,7 +1301,7 @@ gboolean on_filter_entry_key_press(GtkWidget *entry, GdkEventKey *event, gpointe
                     if (play_button) {
                         GtkWidget *img = gtk_image_new_from_icon_name("media-playback-pause-symbolic", GTK_ICON_SIZE_BUTTON);
                         gtk_button_set_image(GTK_BUTTON(play_button), img);
-                        gtk_widget_set_tooltip_text(play_button, "Pavza");
+                        gtk_widget_set_tooltip_text(play_button, "Ustavi");
                         update_play_item_label();
                         update_current_playing_item();
                     }
@@ -1946,9 +1946,9 @@ void reorder_stations(int station_id, int new_pos) {
 
 // Globalni kazalec na tray menu postavko za prikaz/skritje okna
 static GtkWidget *show_item = NULL;
-// Globalni kazalec na tray menu postavko za predvajaj/pavza
+// Globalni kazalec na tray menu postavko za predvajaj/ustavi
 static GtkWidget *play_item = NULL;
-// Prikaže trenutno predvajano postajo nad Predvajaj/Pavza v tray meniju
+// Prikaže trenutno predvajano postajo nad Predvajaj/Ustavi v tray meniju
 static GtkWidget *current_playing_item = NULL;
 // Poseben vnos za prikaz imena postaje (prikazan nad pesmijo)
 static GtkWidget *current_station_item = NULL;
@@ -1977,7 +1977,7 @@ static void update_show_item_label() {
 static void update_play_item_label() {
     if (!play_item) return;
     if (pipeline) {
-        gtk_menu_item_set_label(GTK_MENU_ITEM(play_item), "Pavza");
+        gtk_menu_item_set_label(GTK_MENU_ITEM(play_item), "Ustavi");
     } else {
         gtk_menu_item_set_label(GTK_MENU_ITEM(play_item), "Predvajaj");
     }
@@ -2156,7 +2156,7 @@ void on_station_activated(GtkTreeView *treeview, GtkTreePath *path, GtkTreeViewC
                 if (play_button) {
                     GtkWidget *img = gtk_image_new_from_icon_name("media-playback-pause-symbolic", GTK_ICON_SIZE_BUTTON);
                     gtk_button_set_image(GTK_BUTTON(play_button), img);
-                    gtk_widget_set_tooltip_text(play_button, "Pavza");
+                    gtk_widget_set_tooltip_text(play_button, "Ustavi");
                 }
                 // Posodobi tray meni
                 update_play_item_label();
@@ -2575,7 +2575,7 @@ int main(int argc, char **argv) {
      gtk_widget_set_sensitive(version_item, FALSE);
      gtk_menu_shell_append(GTK_MENU_SHELL(menu), version_item);
     show_item = gtk_menu_item_new_with_label("Prikaži okno");
-    /* Dodaj naprej/nazaj menijske vnose in predvajaj/pavza */
+    /* Dodaj naprej/nazaj menijske vnose in predvajaj/ustavi */
     /* Postavki za prikaz trenutno predvajane postaje in pesmi (dinamično) */
     current_station_item = gtk_menu_item_new_with_label("");
     gtk_widget_set_sensitive(current_station_item, FALSE);
@@ -2593,7 +2593,7 @@ int main(int argc, char **argv) {
     GtkWidget *about_item = gtk_menu_item_new_with_label("O baRadio");
     GtkWidget *quit_item = gtk_menu_item_new_with_label("Izhod");
     GtkWidget *sep_top = gtk_separator_menu_item_new();
-    /* separator neposredno za Predvajaj/Pavza */
+    /* separator neposredno za Predvajaj/Ustavi */
     GtkWidget *sep_after_play = gtk_separator_menu_item_new();
     GtkWidget *sep_bottom = gtk_separator_menu_item_new();
     g_signal_connect(show_item, "activate", G_CALLBACK(toggle_main_window), NULL);
