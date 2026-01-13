@@ -25,7 +25,7 @@ static const char *version = "baRadio v2.6, 2025";
 static void on_gst_message(GstBus *bus, GstMessage *msg, gpointer user_data);
 static const char *get_db_path();
 static void save_last_played(const char *name);
-static void refresh_active_station_color();./a
+static void refresh_active_station_color();
 static void play_station(const char *name);
 static void load_station_urls();
 static void update_play_item_label();
