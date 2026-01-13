@@ -12,7 +12,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <limits.h>
-
+#include <errno.h>
 
 #include <gio/gio.h>
 
@@ -25,7 +25,7 @@ static const char *version = "baRadio v2.6, 2025";
 static void on_gst_message(GstBus *bus, GstMessage *msg, gpointer user_data);
 static const char *get_db_path();
 static void save_last_played(const char *name);
-static void refresh_active_station_color();
+static void refresh_active_station_color();./a
 static void play_station(const char *name);
 static void load_station_urls();
 static void update_play_item_label();
@@ -36,9 +36,18 @@ static char *get_setting(const char *key);
 static void set_setting(const char *key, const char *value);
 void on_toggle_favorite(GtkMenuItem *item, gpointer user_data);
 static void on_fav_toggle_clicked(GtkButton *button, gpointer user_data);
+// History logging (do not touch DB)
+static const char *get_config_dir();
+static gboolean load_history_setting(void);
+static void save_history_setting(gboolean enabled);
+static void record_song_change(const char *station_name, const char *song);
+static void sanitize_filename(const char *in, char *out, size_t outlen);
+static void on_toggle_history(GtkCheckMenuItem *item, gpointer user_data);
 // Globals for favorite filter
 static gboolean favorite_filter_enabled = FALSE;
 static GtkWidget *fav_toggle_button = NULL;
+// History logging flag
+static gboolean history_logging_enabled = FALSE;
 
 // Extern deklaracije za globalne spremenljivke (definirane nižje v kodi)
 extern GstElement *pipeline;
@@ -254,6 +263,106 @@ static void set_setting(const char *key, const char *value) {
         sqlite3_finalize(stmt);
     }
     sqlite3_close(db);
+}
+
+// --- History logging helpers (do not use DB) ---
+static const char *get_config_dir() {
+    static char dir_path[512] = "";
+    if (dir_path[0] == '\0') {
+        const char *home = getenv("HOME");
+        if (!home) home = ".";
+        snprintf(dir_path, sizeof(dir_path), "%s/.config/baradio", home);
+        struct stat st = {0};
+        if (stat(dir_path, &st) == -1) {
+            mkdir(dir_path, 0700);
+        }
+    }
+    return dir_path;
+}
+
+static void sanitize_filename(const char *in, char *out, size_t outlen) {
+    size_t j = 0;
+    for (size_t i = 0; in[i] && j + 1 < outlen; i++) {
+        unsigned char c = (unsigned char)in[i];
+        if (isalnum(c) || c == '-' || c == '_' || c == '.') {
+            out[j++] = in[i];
+        } else if (in[i] == ' ') {
+            out[j++] = '_';
+        } else {
+            out[j++] = '_';
+        }
+    }
+    if (j == 0 && outlen > 1) {
+        out[0] = 's';
+        out[1] = '\0';
+    } else {
+        out[j] = '\0';
+    }
+}
+
+static gboolean load_history_setting(void) {
+    const char *dir = get_config_dir();
+    char path[512];
+    snprintf(path, sizeof(path), "%s/history_enabled", dir);
+    FILE *f = fopen(path, "r");
+    if (!f) return FALSE;
+    int v = 0;
+    if (fscanf(f, "%d", &v) == 1) {
+        fclose(f);
+        return v == 1;
+    }
+    fclose(f);
+    return FALSE;
+}
+
+static void save_history_setting(gboolean enabled) {
+    const char *dir = get_config_dir();
+    char path[512];
+    snprintf(path, sizeof(path), "%s/history_enabled", dir);
+    FILE *f = fopen(path, "w");
+    if (!f) return;
+    fprintf(f, "%d\n", enabled ? 1 : 0);
+    fclose(f);
+}
+
+static void record_song_change(const char *station_name, const char *song) {
+    if (!station_name || !song || strlen(song) == 0) return;
+    const char *dir = get_config_dir();
+    char safe[256];
+    sanitize_filename(station_name, safe, sizeof(safe));
+    if (strlen(safe) == 0) return;
+    char path[1024];
+    int r = snprintf(path, sizeof(path), "%s/%s.txt", dir, safe);
+    if (r < 0 || r >= (int)sizeof(path)) return;
+    // Read last non-empty line
+    char lastline[1024] = "";
+    FILE *f = fopen(path, "r");
+    if (f) {
+        char buf[1024];
+        while (fgets(buf, sizeof(buf), f)) {
+            size_t len = strlen(buf);
+            while (len > 0 && (buf[len-1] == '\n' || buf[len-1] == '\r')) buf[--len] = 0;
+            if (len > 0) {
+                strncpy(lastline, buf, sizeof(lastline)-1);
+                lastline[sizeof(lastline)-1] = '\0';
+            }
+        }
+        fclose(f);
+    }
+    // If last recorded song matches current, skip
+    if (strlen(lastline) > 0 && strcmp(lastline, song) == 0) return;
+    // Append new song
+    f = fopen(path, "a");
+    if (!f) return;
+    fprintf(f, "%s\n", song);
+    fflush(f);
+    fclose(f);
+}
+
+static void on_toggle_history(GtkCheckMenuItem *item, gpointer user_data) {
+    (void)user_data;
+    history_logging_enabled = gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(item));
+    save_history_setting(history_logging_enabled);
 }
 
 // Naloži ikono iz teme kot GdkPixbuf velikosti 'size'
@@ -784,6 +893,13 @@ gboolean on_treeview_button_press(GtkWidget *treeview, GdkEventButton *event, gp
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), edit_item);
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), delete_item);
         if (fav_item) gtk_menu_shell_append(GTK_MENU_SHELL(menu), fav_item);
+
+        // History logging menu item (persisted to ~/.config/baradio/history_enabled)
+        GtkWidget *history_item = gtk_check_menu_item_new_with_label("Beleži zgodovino pesmi");
+        gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(history_item), history_logging_enabled);
+        g_signal_connect(history_item, "toggled", G_CALLBACK(on_toggle_history), treeview);
+        gtk_menu_shell_append(GTK_MENU_SHELL(menu), history_item);
+
         gtk_widget_show_all(menu);
         gtk_menu_popup_at_pointer(GTK_MENU(menu), (GdkEvent*)event);
         return TRUE;
@@ -1552,29 +1668,38 @@ static void on_gst_message(GstBus *bus, GstMessage *msg, gpointer user_data) {
         gst_message_parse_tag(msg, &tags);
         gchar *title = NULL;
         gchar *artist = NULL;
+        char new_song[256] = "";
         if (gst_tag_list_get_string(tags, GST_TAG_TITLE, &title)) {
-            strncpy(current_song, title, sizeof(current_song)-1);
+            strncpy(new_song, title, sizeof(new_song)-1);
         }
         if (gst_tag_list_get_string(tags, GST_TAG_ARTIST, &artist)) {
             // Če je na voljo tudi izvajalec, združi
             gchar song_info[256];
-            if (title) {
-                snprintf(song_info, sizeof(song_info), "%s – %s", artist, title);
-                strncpy(current_song, song_info, sizeof(current_song)-1);
+            if (strlen(new_song) > 0) {
+                snprintf(song_info, sizeof(song_info), "%s – %s", artist, new_song);
+                strncpy(new_song, song_info, sizeof(new_song)-1);
             } else {
-                strncpy(current_song, artist, sizeof(current_song)-1);
+                strncpy(new_song, artist, sizeof(new_song)-1);
             }
         }
         g_free(title);
         g_free(artist);
-        // Posodobi label
-        gchar info[512];
+
         const gchar *station_name = (const gchar *)user_data;
-        if (strlen(current_song) > 0)
-            snprintf(info, sizeof(info), "%s", current_song);
-        else
-            snprintf(info, sizeof(info), "%s", station_name);
-        gtk_label_set_text(GTK_LABEL(label), info);
+        if (strcmp(current_song, new_song) != 0) {
+            strncpy(current_song, new_song, sizeof(current_song)-1);
+            // Posodobi label
+            gchar info[512];
+            if (strlen(current_song) > 0)
+                snprintf(info, sizeof(info), "%s", current_song);
+            else
+                snprintf(info, sizeof(info), "%s", station_name);
+            gtk_label_set_text(GTK_LABEL(label), info);
+            // Zapiši v zgodovino, če omogočeno in imamo naslov pesmi
+            if (history_logging_enabled && strlen(current_song) > 0 && station_name) {
+                record_song_change(station_name, current_song);
+            }
+        }
         gst_tag_list_unref(tags);
         update_current_playing_item();
     } else if (GST_MESSAGE_TYPE(msg) == GST_MESSAGE_ERROR) {
@@ -2410,6 +2535,8 @@ int main(int argc, char **argv) {
     } else {
         favorite_filter_enabled = FALSE;
     }
+    // Load history logging setting (persisted to ~/.config/baradio/history_enabled)
+    history_logging_enabled = load_history_setting();
     fav_toggle_button = gtk_button_new();
     GtkWidget *fav_img = get_fav_image_for_state(favorite_filter_enabled);
     gtk_button_set_image(GTK_BUTTON(fav_toggle_button), fav_img);
