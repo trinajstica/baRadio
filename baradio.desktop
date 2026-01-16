@@ -2,7 +2,8 @@
 Type=Application
 Name=baRadio
 Comment=Preprost radio predvajalnik
-Exec=baradio
+Exec=/usr/local/bin/baradio
+TryExec=/usr/local/bin/baradio
 Icon=baradio
 Terminal=false
 Categories=AudioVideo;Player;GTK;

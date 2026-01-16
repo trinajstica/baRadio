@@ -25,25 +25,42 @@ install:
 	mkdir -p /usr/local/share/icons/hicolor/64x64/apps
 	mkdir -p /usr/local/share/pixmaps
 	mkdir -p /usr/local/share/applications
+	# Also create /usr/share locations so KDE/system menus that scan /usr/share can find files
+	mkdir -p /usr/share/icons/hicolor/scalable/apps
+	mkdir -p /usr/share/icons/hicolor/16x16/apps
+	mkdir -p /usr/share/icons/hicolor/32x32/apps
+	mkdir -p /usr/share/icons/hicolor/48x48/apps
+	mkdir -p /usr/share/icons/hicolor/64x64/apps
+	mkdir -p /usr/share/pixmaps
+	mkdir -p /usr/share/applications
 	cp baradio /usr/local/bin/
 	# Copy SVG next to executable so program can find it (AppImage/local installs)
 	cp icons/baradio.svg /usr/local/bin/baradio.svg
 	cp icons/baradio.svg /usr/local/share/icons/hicolor/scalable/apps/baradio.svg
+	cp icons/baradio.svg /usr/share/icons/hicolor/scalable/apps/baradio.svg
 	# If rsvg-convert is available, create PNG fallbacks for popular sizes
 	if command -v rsvg-convert >/dev/null 2>&1; then \
 		rsvg-convert -w 16 -h 16 icons/baradio.svg -o /usr/local/share/icons/hicolor/16x16/apps/baradio.png; \
+		rsvg-convert -w 16 -h 16 icons/baradio.svg -o /usr/share/icons/hicolor/16x16/apps/baradio.png; \
 		rsvg-convert -w 32 -h 32 icons/baradio.svg -o /usr/local/share/icons/hicolor/32x32/apps/baradio.png; \
+		rsvg-convert -w 32 -h 32 icons/baradio.svg -o /usr/share/icons/hicolor/32x32/apps/baradio.png; \
 		rsvg-convert -w 48 -h 48 icons/baradio.svg -o /usr/local/share/icons/hicolor/48x48/apps/baradio.png; \
+		rsvg-convert -w 48 -h 48 icons/baradio.svg -o /usr/share/icons/hicolor/48x48/apps/baradio.png; \
 		rsvg-convert -w 64 -h 64 icons/baradio.svg -o /usr/local/share/icons/hicolor/64x64/apps/baradio.png; \
+		rsvg-convert -w 64 -h 64 icons/baradio.svg -o /usr/share/icons/hicolor/64x64/apps/baradio.png; \
 		rsvg-convert -w 48 -h 48 icons/baradio.svg -o /usr/local/share/pixmaps/baradio.png; \
+		rsvg-convert -w 48 -h 48 icons/baradio.svg -o /usr/share/pixmaps/baradio.png; \
 		rsvg-convert -w 48 -h 48 icons/baradio.svg -o /usr/local/bin/baradio.png; \
 	else \
 		cp icons/baradio.svg /usr/local/share/pixmaps/baradio.svg; \
+		cp icons/baradio.svg /usr/share/pixmaps/baradio.svg; \
 	fi
 	cp baradio.desktop /usr/local/share/applications/baradio.desktop
+	cp baradio.desktop /usr/share/applications/baradio.desktop
 	# Update icon cache if available
 	if command -v gtk-update-icon-cache >/dev/null 2>&1; then \
 		gtk-update-icon-cache -f /usr/local/share/icons/hicolor || true; \
+		gtk-update-icon-cache -f /usr/share/icons/hicolor || true; \
 	fi
 
 .PHONY: all clean install
