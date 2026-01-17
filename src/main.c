@@ -334,29 +334,115 @@ static void record_song_change(const char *station_name, const char *song) {
     char path[1024];
     int r = snprintf(path, sizeof(path), "%s/%s.txt", dir, safe);
     if (r < 0 || r >= (int)sizeof(path)) return;
-    // Read last non-empty line
-    char lastline[1024] = "";
+
+    // Preberemo datoteko, odstranimo prazne vrstice in preverimo duplikat
     FILE *f = fopen(path, "r");
+    char **lines = NULL;
+    size_t count = 0, capacity = 0;
+    gboolean had_blank = FALSE;
+    gboolean duplicate = FALSE;
     if (f) {
         char buf[1024];
         while (fgets(buf, sizeof(buf), f)) {
+            // Odstranimo newline/CR
             size_t len = strlen(buf);
-            while (len > 0 && (buf[len-1] == '\n' || buf[len-1] == '\r')) buf[--len] = 0;
-            if (len > 0) {
-                strncpy(lastline, buf, sizeof(lastline)-1);
-                lastline[sizeof(lastline)-1] = '\0';
+            while (len > 0 && (buf[len-1] == '\n' || buf[len-1] == '\r')) buf[--len] = '\0';
+            // Trim leading whitespace
+            char *start = buf;
+            while (*start && isspace((unsigned char)*start)) start++;
+            // Trim trailing whitespace
+            char *end = start + strlen(start);
+            while (end > start && isspace((unsigned char)*(end-1))) *(--end) = '\0';
+            if (*start == '\0') { had_blank = TRUE; continue; }
+            if (strcmp(start, song) == 0) duplicate = TRUE;
+            char *copy = strdup(start);
+            if (!copy) continue; // allocation failure - preskoči
+            if (count + 1 > capacity) {
+                size_t newcap = capacity ? capacity * 2 : 16;
+                char **tmp = realloc(lines, newcap * sizeof(char*));
+                if (!tmp) { free(copy); break; }
+                lines = tmp;
+                capacity = newcap;
             }
+            lines[count++] = copy;
         }
         fclose(f);
     }
-    // If last recorded song matches current, skip
-    if (strlen(lastline) > 0 && strcmp(lastline, song) == 0) return;
-    // Append new song
-    f = fopen(path, "a");
-    if (!f) return;
-    fprintf(f, "%s\n", song);
-    fflush(f);
-    fclose(f);
+
+    if (duplicate) {
+        // Če najdemo duplikat, le po potrebi uredimo datoteko tako, da odstranimo prazne vrstice
+        if (had_blank) {
+            char tmp[1024];
+            if (snprintf(tmp, sizeof(tmp), "%s.tmp", path) >= 0 && strlen(tmp) < sizeof(tmp)) {
+                FILE *out = fopen(tmp, "w");
+                if (out) {
+                    for (size_t i = 0; i < count; i++) fprintf(out, "%s\n", lines[i]);
+                    fflush(out);
+                    fclose(out);
+                    rename(tmp, path);
+                }
+            } else {
+                FILE *out = fopen(path, "w");
+                if (out) {
+                    for (size_t i = 0; i < count; i++) fprintf(out, "%s\n", lines[i]);
+                    fflush(out);
+                    fclose(out);
+                }
+            }
+        }
+        for (size_t i = 0; i < count; i++) free(lines[i]);
+        free(lines);
+        return;
+    }
+
+    // Dodamo pesem in prepišemo datoteko brez praznih vrstic
+    char *songcopy = strdup(song);
+    if (!songcopy) {
+        for (size_t i = 0; i < count; i++) free(lines[i]);
+        free(lines);
+        return;
+    }
+    if (count + 1 > capacity) {
+        size_t newcap = capacity ? capacity * 2 : 16;
+        char **tmp = realloc(lines, newcap * sizeof(char*));
+        if (!tmp) {
+            free(songcopy);
+            for (size_t i = 0; i < count; i++) free(lines[i]);
+            free(lines);
+            return;
+        }
+        lines = tmp;
+        capacity = newcap;
+    }
+    lines[count++] = songcopy;
+
+    char tmp[1024];
+    if (snprintf(tmp, sizeof(tmp), "%s.tmp", path) >= 0 && strlen(tmp) < sizeof(tmp)) {
+        FILE *out = fopen(tmp, "w");
+        if (out) {
+            for (size_t i = 0; i < count; i++) fprintf(out, "%s\n", lines[i]);
+            fflush(out);
+            fclose(out);
+            rename(tmp, path);
+        } else {
+            FILE *out2 = fopen(path, "w");
+            if (out2) {
+                for (size_t i = 0; i < count; i++) fprintf(out2, "%s\n", lines[i]);
+                fflush(out2);
+                fclose(out2);
+            }
+        }
+    } else {
+        FILE *out = fopen(path, "w");
+        if (out) {
+            for (size_t i = 0; i < count; i++) fprintf(out, "%s\n", lines[i]);
+            fflush(out);
+            fclose(out);
+        }
+    }
+
+    for (size_t i = 0; i < count; i++) free(lines[i]);
+    free(lines);
 }
 
 static void on_toggle_history(GtkCheckMenuItem *item, gpointer user_data) {
