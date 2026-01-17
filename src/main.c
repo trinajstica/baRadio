@@ -88,9 +88,21 @@ static const gchar introspection_xml[] =
 static void mpris_handle_method_call(GDBusConnection *conn, const gchar *sender, const gchar *obj_path, const gchar *iface, const gchar *method, GVariant *params, GDBusMethodInvocation *invocation, gpointer user_data) {
     (void)conn; (void)sender; (void)obj_path; (void)params; (void)user_data;
     if (g_strcmp0(iface, "org.mpris.MediaPlayer2.Player") == 0) {
-        if (g_strcmp0(method, "Play") == 0 || g_strcmp0(method, "Pause") == 0 || g_strcmp0(method, "PlayPause") == 0 || g_strcmp0(method, "Stop") == 0) {
-            // Vsi ti ukazi naj sprožijo on_play_clicked (toggle play/stop)
+        if (g_strcmp0(method, "Play") == 0) {
+            // Play zažene samo, če ne predvaja (prepreči samodejno predvajanje po spanju)
+            if (!pipeline) {
+                on_play_clicked(NULL, NULL);
+            }
+            g_dbus_method_invocation_return_value(invocation, NULL);
+        } else if (g_strcmp0(method, "PlayPause") == 0) {
+            // PlayPause toggle-a predvajanje
             on_play_clicked(NULL, NULL);
+            g_dbus_method_invocation_return_value(invocation, NULL);
+        } else if (g_strcmp0(method, "Pause") == 0 || g_strcmp0(method, "Stop") == 0) {
+            // Pause/Stop ustavita samo, če predvaja
+            if (pipeline) {
+                on_play_clicked(NULL, NULL);
+            }
             g_dbus_method_invocation_return_value(invocation, NULL);
         } else if (g_strcmp0(method, "Next") == 0) {
             // Naslednja postaja
