@@ -19,7 +19,7 @@
 void on_play_clicked(GtkButton *button, gpointer user_data);
 
 // Verzija aplikacije
-static const char *version = "baRadio v2.6, 2025";
+static const char *version = "baRadio v2.8, 2025";
 
 // Forward deklaracije
 static void on_gst_message(GstBus *bus, GstMessage *msg, gpointer user_data);
@@ -1128,11 +1128,14 @@ static GtkWidget *global_filter_entry = NULL;
 // Globalne spremenljivke za kontrolne gumbe
 static GtkWidget *play_button = NULL;
 //static GtkWidget *pause_button = NULL; // ni več v rabi
+// Števec zaporednih napak streama (za zaščito pred neskončnim auto-switchom)
+static int consecutive_stream_errors = 0;
 
 // --- KONTROLNI GUMBI --- //
 
 void on_play_clicked(GtkButton *button, gpointer user_data) {
     (void)button; (void)user_data;
+    consecutive_stream_errors = 0;
     if (pipeline) {
         // Če že predvaja, ustavi (kot je bila logika v stop)
         {
@@ -1799,6 +1802,7 @@ static void on_gst_message(GstBus *bus, GstMessage *msg, gpointer user_data) {
             }
         }
         gst_tag_list_unref(tags);
+        consecutive_stream_errors = 0;  // Uspešen sprejem podatkov = resetiraj napake
         update_current_playing_item();
     } else if (GST_MESSAGE_TYPE(msg) == GST_MESSAGE_ERROR) {
         // Napaka predvajalnika
@@ -1833,6 +1837,18 @@ static void on_gst_message(GstBus *bus, GstMessage *msg, gpointer user_data) {
         refresh_active_station_color();
         update_play_item_label();
         update_current_playing_item();
+        // Zaščita pred neskončnim auto-switchom pri izpadu interneta
+        consecutive_stream_errors++;
+        if (consecutive_stream_errors > 3) {
+            consecutive_stream_errors = 0;
+            gtk_label_set_text(GTK_LABEL(label), "Ni signala. Preveri internetno povezavo.");
+            if (play_button) {
+                GtkWidget *img = gtk_image_new_from_icon_name("media-playback-start-symbolic", GTK_ICON_SIZE_BUTTON);
+                gtk_button_set_image(GTK_BUTTON(play_button), img);
+                gtk_widget_set_tooltip_text(play_button, "Predvajaj");
+            }
+            return;
+        }
         // Poskusi samodejno preklop na naslednjo postajo, če obstaja v filter_model
         if (treeview && user_data) {
             const gchar *station_name = (const gchar *)user_data;
@@ -1862,8 +1878,13 @@ static void on_gst_message(GstBus *bus, GstMessage *msg, gpointer user_data) {
                 valid = gtk_tree_model_iter_next(filter_model, &iter);
             }
             if (!switched) {
-                // Ni naslednje postaje; ustavi, ostanemo v stanju brez predvajanja
-                /* informational log suppressed */
+                // Ni naslednje postaje; resetiraj gumb na Play
+                consecutive_stream_errors = 0;
+                if (play_button) {
+                    GtkWidget *img = gtk_image_new_from_icon_name("media-playback-start-symbolic", GTK_ICON_SIZE_BUTTON);
+                    gtk_button_set_image(GTK_BUTTON(play_button), img);
+                    gtk_widget_set_tooltip_text(play_button, "Predvajaj");
+                }
             }
         }
     } else if (GST_MESSAGE_TYPE(msg) == GST_MESSAGE_EOS) {
@@ -1884,6 +1905,12 @@ static void on_gst_message(GstBus *bus, GstMessage *msg, gpointer user_data) {
         refresh_active_station_color();
         update_play_item_label();
         update_current_playing_item();
+        consecutive_stream_errors = 0;
+        if (play_button) {
+            GtkWidget *img = gtk_image_new_from_icon_name("media-playback-start-symbolic", GTK_ICON_SIZE_BUTTON);
+            gtk_button_set_image(GTK_BUTTON(play_button), img);
+            gtk_widget_set_tooltip_text(play_button, "Predvajaj");
+        }
     }
 }
 
@@ -2374,6 +2401,7 @@ void on_station_activated(GtkTreeView *treeview, GtkTreePath *path, GtkTreeViewC
                 update_current_playing_item();
             } else {
                 // Predvajaj izbrano postajo
+                consecutive_stream_errors = 0;
                 play_station(name);
                 // Nastavi ikono na Pause
                 if (play_button) {
