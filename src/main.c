@@ -19,7 +19,7 @@
 void on_play_clicked(GtkButton *button, gpointer user_data);
 
 // Verzija aplikacije
-static const char *version = "baRadio v2.8, 2025";
+static const char *version = "baRadio v2.10, 2025";
 
 // Forward deklaracije
 static void on_gst_message(GstBus *bus, GstMessage *msg, gpointer user_data);
@@ -2457,6 +2457,9 @@ static void play_station(const char *name) {
     // Začni novo
     pipeline = gst_element_factory_make("playbin", "player");
     if (pipeline) {
+        GstElement *fake_video_sink = gst_element_factory_make("fakesink", "fake-video-sink");
+        if (fake_video_sink)
+            g_object_set(pipeline, "video-sink", fake_video_sink, NULL);
         g_object_set(pipeline, "uri", url, NULL);
         strncpy(current_station, url, sizeof(current_station)-1);
         current_song[0] = '\0';
