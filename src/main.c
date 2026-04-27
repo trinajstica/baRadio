@@ -1767,16 +1767,8 @@ static void on_gst_message(GstBus *bus, GstMessage *msg, gpointer user_data) {
     }
 
     if (GST_MESSAGE_TYPE(msg) == GST_MESSAGE_BUFFERING) {
-        gint percent = 0;
-        gst_message_parse_buffering(msg, &percent);
         if (current_song[0] == '\0') {
-            gchar info[512];
-            if (station_name && *station_name) {
-                snprintf(info, sizeof(info), "%s (%d%%)", station_name, percent);
-            } else {
-                snprintf(info, sizeof(info), "Povezovanje... (%d%%)", percent);
-            }
-            gtk_label_set_text(GTK_LABEL(label), info);
+            gtk_label_set_text(GTK_LABEL(label), "Povezovanje...");
         }
         return;
     } else if (GST_MESSAGE_TYPE(msg) == GST_MESSAGE_TAG) {
@@ -2438,7 +2430,7 @@ static void play_station(const char *name) {
             return;
         }
         gst_element_set_state(pipeline, GST_STATE_PLAYING);
-        gtk_label_set_text(GTK_LABEL(label), name);
+        gtk_label_set_text(GTK_LABEL(label), "Povezovanje...");
         save_last_played(name);
         refresh_active_station_color();
         update_play_item_label();
