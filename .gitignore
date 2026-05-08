@@ -16,6 +16,9 @@ baradio
 *.swp
 .vscode/
 
+# compile_commands.json (clangd generated)
+compile_commands.json
+
 # Log datoteke
 *.log
 
