@@ -2313,6 +2313,11 @@ static gboolean hide_on_delete(GtkWidget *window, GdkEvent *event, gpointer user
     return TRUE; // prepreči zapiranje
 }
 
+static void on_main_window_hide(GtkWidget *widget, gpointer user_data) {
+    (void)widget; (void)user_data;
+    update_show_item_label();
+}
+
 // Callback za izhod
 void quit_app(GtkMenuItem *item, gpointer user_data) {
     (void)item; (void)user_data;
@@ -2630,7 +2635,7 @@ int main(int argc, char **argv) {
     g_signal_connect(fav_toggle_button, "clicked", G_CALLBACK(on_fav_toggle_clicked), NULL);
 
     // Gumb za zapiranje okna (close) – ročno, ker je built-in na Plasma neviden.
-    GtkWidget *close_button = gtk_button_new_from_icon_name("window-close-symbolic", GTK_ICON_SIZE_BUTTON);
+    GtkWidget *close_button = gtk_button_new_with_label("✘");
     gtk_button_set_relief(GTK_BUTTON(close_button), GTK_RELIEF_NORMAL);
     gtk_widget_set_tooltip_text(close_button, "Zapri");
     g_signal_connect_swapped(close_button, "clicked", G_CALLBACK(gtk_widget_hide), main_window);
@@ -2748,6 +2753,8 @@ int main(int argc, char **argv) {
 
     // Namesto destroy uporabim delete-event za skrivanje
     g_signal_connect(main_window, "delete-event", G_CALLBACK(hide_on_delete), NULL);
+    // Posodobi tray meni labelo, ko je okno skrito (ne glede na način)
+    g_signal_connect(main_window, "hide", G_CALLBACK(on_main_window_hide), NULL);
 
         // Tray ikona (AppIndicator)
     AppIndicator *indicator = app_indicator_new(
