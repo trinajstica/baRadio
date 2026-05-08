@@ -2219,6 +2219,8 @@ static void update_play_item_label() {
 // Handler, sprožen ko se tray menu prikaže — osveži informacije v meniju
 static void on_tray_menu_show(GtkWidget *menu, gpointer user_data) {
     (void)menu; (void)user_data;
+    // Posodobi labelo za prikaz/skritje okna
+    update_show_item_label();
     // Posodobi labelo Play/Pause
     update_play_item_label();
     update_current_playing_item();
@@ -2311,6 +2313,11 @@ static gboolean hide_on_delete(GtkWidget *window, GdkEvent *event, gpointer user
     gtk_widget_hide(window);
     update_show_item_label();
     return TRUE; // prepreči zapiranje
+}
+
+static void on_main_window_hide(GtkWidget *widget, gpointer user_data) {
+    (void)widget; (void)user_data;
+    update_show_item_label();
 }
 
 // Callback za izhod
@@ -2509,11 +2516,12 @@ int main(int argc, char **argv) {
 
     // Header bar (lepši titlebar z gumbi)
     GtkWidget *header = gtk_header_bar_new();
-    gtk_header_bar_set_show_close_button(GTK_HEADER_BAR(header), TRUE);
+    // Ne uporabi gtk_header_bar_set_show_close_button – na Plasma s CSD je ta gumb neviden.
+    // Namesto tega dodamo vse gumbe ročno spodaj.
     gtk_header_bar_set_title(GTK_HEADER_BAR(header), version);
     gtk_window_set_titlebar(GTK_WINDOW(main_window), header);
 
-    // Minimalen CSS samo za osnovne izboljšave (upošteva sistemsko temo)
+    // Minimalen CSS za headerbar (gumbi so vidni, ikone svetle)
     GtkCssProvider *css_provider = gtk_css_provider_new();
     gtk_css_provider_load_from_data(css_provider,
         "headerbar {\n"
@@ -2521,8 +2529,18 @@ int main(int argc, char **argv) {
         "  color: #f5f7fa;\n"
         "}\n"
         "headerbar button {\n"
-        "  background: transparent;\n"
+        "  background: rgba(255,255,255,0.1);\n"
         "  border-radius: 6px;\n"
+        "  border: none;\n"
+        "  color: #f5f7fa;\n"
+        "  min-width: 28px;\n"
+        "  min-height: 28px;\n"
+        "}\n"
+        "headerbar button:hover {\n"
+        "  background: rgba(255,255,255,0.2);\n"
+        "}\n"
+        "headerbar button:active {\n"
+        "  background: rgba(255,255,255,0.3);\n"
         "}\n"
         "#station_label { \n"
         "  font-size: 15px; \n"
@@ -2617,6 +2635,23 @@ int main(int argc, char **argv) {
     gtk_button_set_relief(GTK_BUTTON(fav_toggle_button), GTK_RELIEF_NORMAL);
     gtk_widget_set_tooltip_text(fav_toggle_button, "Priljubljene (filter)");
     g_signal_connect(fav_toggle_button, "clicked", G_CALLBACK(on_fav_toggle_clicked), NULL);
+
+    // Gumb za zapiranje okna (close) – ročno, ker je built-in na Plasma neviden.
+    GtkWidget *close_button = gtk_button_new_with_label("✘");
+    gtk_button_set_relief(GTK_BUTTON(close_button), GTK_RELIEF_NORMAL);
+    gtk_widget_set_tooltip_text(close_button, "Zapri");
+    g_signal_connect_swapped(close_button, "clicked", G_CALLBACK(gtk_widget_hide), main_window);
+    gtk_header_bar_pack_end(GTK_HEADER_BAR(header), close_button);
+
+    // Gumb za pomanjšanje okna (minimize) – KWin na Plasma skrije sistemske gumbe,
+    // ker smo nastavili lasten titlebar prek gtk_window_set_titlebar().
+    GtkWidget *min_button = gtk_button_new_from_icon_name("window-minimize-symbolic", GTK_ICON_SIZE_BUTTON);
+    gtk_button_set_relief(GTK_BUTTON(min_button), GTK_RELIEF_NORMAL);
+    gtk_widget_set_tooltip_text(min_button, "Pomanjšaj");
+    g_signal_connect_swapped(min_button, "clicked", G_CALLBACK(gtk_window_iconify), main_window);
+    gtk_header_bar_pack_end(GTK_HEADER_BAR(header), min_button);
+
+    // Srček (priljubljene) – pack_end nazadnje, da je desno od minimize in close
     gtk_header_bar_pack_end(GTK_HEADER_BAR(header), fav_toggle_button);
 
     // TreeView za prikaz postaj v scrollable oknu
@@ -2720,6 +2755,8 @@ int main(int argc, char **argv) {
 
     // Namesto destroy uporabim delete-event za skrivanje
     g_signal_connect(main_window, "delete-event", G_CALLBACK(hide_on_delete), NULL);
+    // Posodobi tray meni labelo, ko je okno skrito (ne glede na način)
+    g_signal_connect(main_window, "hide", G_CALLBACK(on_main_window_hide), NULL);
 
         // Tray ikona (AppIndicator)
     AppIndicator *indicator = app_indicator_new(
