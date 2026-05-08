@@ -19,7 +19,7 @@
 void on_play_clicked(GtkButton *button, gpointer user_data);
 
 // Verzija aplikacije
-static const char *version = "baRadio v2.10, 2025";
+static const char *version = "baRadio v2.12, 2025";
 
 // Forward deklaracije
 static void on_gst_message(GstBus *bus, GstMessage *msg, gpointer user_data);
@@ -716,7 +716,7 @@ static void on_add_station(GtkMenuItem *item, gpointer user_data) {
             refresh_active_station_color();
             // Izberi novo postajo in nastavi fokus
             GtkTreeIter iter;
-            
+
             gboolean valid = gtk_tree_model_get_iter_first(filter_model, &iter);
             while (valid) {
                 gchar *name = NULL;
@@ -858,7 +858,7 @@ static void on_edit_station(GtkMenuItem *item, gpointer user_data) {
             refresh_active_station_color();
             // Ponovno izberi urejeno postajo (z novim imenom) in nastavi fokus
             GtkTreeIter iter;
-            
+
             gboolean valid = gtk_tree_model_get_iter_first(filter_model, &iter);
             while (valid) {
                 gchar *iter_name = NULL;
@@ -1245,17 +1245,17 @@ static void on_previous_clicked(GtkButton *button, gpointer user_data) {
 // Pomožna funkcija za osvežitev barve aktivne postaje
 static void refresh_active_station_color() {
     if (!pipeline || strlen(current_station) == 0) return;
-    
+
     GtkTreeModel *filter_model = GTK_TREE_MODEL(gtk_tree_view_get_model(GTK_TREE_VIEW(treeview)));
     GtkTreeModel *model = gtk_tree_model_filter_get_model(GTK_TREE_MODEL_FILTER(filter_model));
     GtkTreeIter iter;
     // Iteriraj skozi base model
         gboolean valid = gtk_tree_model_get_iter_first(model, &iter);
-    
+
     while (valid) {
         gchar *name = NULL;
         gtk_tree_model_get(model, &iter, 1, &name, -1);  // Stolpec 1 je ime
-        
+
         if (name) {
             const char *url = g_hash_table_lookup(station_urls, name);
             // Če je URL enak trenutni postaji, nastavi ikono ▶, sicer odstrani ikono
@@ -1424,7 +1424,7 @@ gboolean on_filter_entry_key_press(GtkWidget *entry, GdkEventKey *event, gpointe
         search_string[0] = '\0';
         gtk_tree_model_filter_refilter(GTK_TREE_MODEL_FILTER(user_data));
         gtk_widget_grab_focus(treeview); // Postavi fokus na treeview
-        
+
         // Premakni selekcijo na trenutno aktivno postajo, če obstaja
         if (pipeline && strlen(current_station) > 0) {
             GtkTreeModel *filter_model = GTK_TREE_MODEL(gtk_tree_view_get_model(GTK_TREE_VIEW(treeview)));
@@ -1639,7 +1639,7 @@ gboolean on_drag_motion(GtkWidget *widget, GdkDragContext *context, gint x, gint
 // Handler za drag-drop (potreben za preprečitev GTK opozorila in sprožitev prenosa podatkov)
 gboolean on_drag_drop(GtkWidget *widget, GdkDragContext *context, gint x, gint y, guint time, gpointer user_data) {
     (void)user_data; (void)x; (void)y;
-    
+
     // Če imamo filter ali search, ne dovoli
     if (favorite_filter_enabled || (search_string[0] != '\0')) {
         gtk_drag_finish(context, FALSE, FALSE, time);
@@ -1653,13 +1653,13 @@ gboolean on_drag_drop(GtkWidget *widget, GdkDragContext *context, gint x, gint y
         gtk_drag_get_data(widget, context, target, time);
         return TRUE; // Prepreči default handler
     }
-    
+
     return FALSE;
 }
 
 void on_drag_data_received(GtkWidget *widget, GdkDragContext *context, gint x, gint y, GtkSelectionData *selection_data, guint info, guint time, gpointer user_data) {
     (void)selection_data; (void)info; (void)user_data;
-    
+
     GtkTreeView *tv = GTK_TREE_VIEW(widget);
     GtkTreeModel *model = gtk_tree_view_get_model(tv);
     GtkTreePath *dest_path = NULL;
@@ -1719,7 +1719,7 @@ void on_drag_data_received(GtkWidget *widget, GdkDragContext *context, gint x, g
     // Če smo spustili "BEFORE Y" (kjer Y je na new_pos), želimo biti PRED Y.
     // Y gre na new_pos - 1. Mi gremo na new_pos. Mi smo ZA Y. NAPAKA.
     // Morali bi iti na new_pos - 1.
-    
+
     if (source_pos < new_pos) {
         new_pos--;
     }
@@ -1729,7 +1729,7 @@ void on_drag_data_received(GtkWidget *widget, GdkDragContext *context, gint x, g
 
     // Osveži model
     fill_station_store(station_store, NULL);
-    
+
     // Poskusi obnoviti selekcijo na premaknjeno postajo
     // To zahteva iskanje iterja z istim ID-jem v osveženem modelu
     // (Lahko implementiramo kasneje za boljšo izkušnjo)
@@ -1750,7 +1750,7 @@ void on_drag_data_received(GtkWidget *widget, GdkDragContext *context, gint x, g
     }
 
     gtk_drag_finish(context, TRUE, FALSE, time);
-    
+
     // Prepreči default handler (GTK warning fix)
     g_signal_stop_emission_by_name(widget, "drag-data-received");
 }
@@ -2062,12 +2062,12 @@ void reorder_stations(int station_id, int new_pos) {
     // Če je AFTER, želimo indeks J+1.
     // Težava: `new_pos` parameter funkcije je trenutno "vrednost pozicije", ne indeks.
     // Moramo ugotoviti, kateri indeks v arrayu ustreza tej poziciji.
-    
+
     // Poenostavitev:
     // Namesto da se zanašamo na `new_pos` kot vrednost, bi bilo bolje, če bi `on_drag_data_received`
     // poslal ID ciljne postaje in smer (before/after).
     // Ampak, ker imamo `new_pos` (vrednost), poskusimo najti, kam to paše.
-    
+
     // Poiščimo indeks, kjer je stations[i].pos >= new_pos.
     // To bo naš ciljni indeks za vrivanje.
     int target_idx = count; // Default na konec
@@ -2081,36 +2081,36 @@ void reorder_stations(int station_id, int new_pos) {
     // Premakni element v arrayu
     // Iz current_idx na target_idx
     struct StationInfo temp = stations[current_idx];
-    
+
     // Če premikamo dol (current < target)
     // Ker smo current že odstranili (logično), se vsi indeksi > current zmanjšajo za 1.
     // Če je target_idx > current_idx, moramo target_idx zmanjšati za 1, da dobimo pravi indeks po odstranitvi.
     // Ampak pozor: logika zgoraj (loop) najde prvi element, ki ima pos >= new_pos.
     // Če smo premaknili element dol, bo new_pos večji od njegove trenutne pozicije.
-    
+
     // Preprostejša logika z arrayem:
     // Naredimo nov array
     struct StationInfo *new_stations = malloc(sizeof(struct StationInfo) * count);
     int dest_ptr = 0;
-    
+
     // Vstavimo vse razen premaknjene postaje, na prava mesta
     for (int i = 0; i < count; i++) {
         if (i == current_idx) continue; // Preskoči premaknjeno postajo
-        
+
         // Če smo na mestu, kamor želimo vstaviti (target_idx), vstavimo zdaj
         // Note: if target_idx > current_idx, we've skipped one slot in the original loop.
         // To je zapleteno.
-        
+
         // Vrnitev na preprosto logiko:
         // Uporabimo SQL transakcijo za posodobitev vseh pozicij na 10, 20, 30...
         // S tem zagotovimo luknje za lažje vstavljanje v prihodnje in normalizacijo.
     }
     free(new_stations); // neuporabljeno
-    
+
     // --- Implementacija z SQL UPDATE in normalizacijo ---
     // 1. Izvedi premik kot prej (relativni shift)
     // 2. Preberi vse in posodobi na čiste vrednosti (1, 2, 3...)
-    
+
     char *err_msg = NULL;
     sqlite3_exec(db, "BEGIN TRANSACTION;", 0, 0, 0);
 
@@ -2128,7 +2128,7 @@ void reorder_stations(int station_id, int new_pos) {
         snprintf(sql, sizeof(sql), "UPDATE stations SET position = position + 1 WHERE position >= %d AND position < %d;", new_pos, old_pos);
         sqlite3_exec(db, sql, 0, 0, &err_msg);
     }
-    
+
     if (err_msg) {
         printf("SQL Error (shift): %s\n", err_msg);
         sqlite3_free(err_msg);
@@ -2139,7 +2139,7 @@ void reorder_stations(int station_id, int new_pos) {
     char sql_update[256];
     snprintf(sql_update, sizeof(sql_update), "UPDATE stations SET position = %d WHERE id = %d;", new_pos, station_id);
     sqlite3_exec(db, sql_update, 0, 0, &err_msg);
-    
+
     if (err_msg) {
         printf("SQL Error (update): %s\n", err_msg);
         sqlite3_free(err_msg);
@@ -2151,7 +2151,7 @@ void reorder_stations(int station_id, int new_pos) {
     // preštevilčimo vse od 1 naprej, da bo čisto.
     // Ker SQLite nima enostavnega "ROW_NUMBER() UPDATE", moramo to narediti v aplikaciji ali s temp tabelo.
     // Najlažje: preberi ID-je sortirane po position, in jih posodobi.
-    
+
     // Moramo na novo prebrati, ker so se position spremenile (znotraj transakcije!)
     sqlite3_stmt *stmt2;
     // Pripravi seznam ID-jev v novem vrstnem redu
@@ -2163,7 +2163,7 @@ void reorder_stations(int station_id, int new_pos) {
         }
         sqlite3_finalize(stmt2);
     }
-    
+
     // Posodobi vsakega
     for (int i = 0; i < new_count; i++) {
         char sql_norm[128];
@@ -2219,8 +2219,6 @@ static void update_play_item_label() {
 // Handler, sprožen ko se tray menu prikaže — osveži informacije v meniju
 static void on_tray_menu_show(GtkWidget *menu, gpointer user_data) {
     (void)menu; (void)user_data;
-    // Posodobi labelo za prikaz/skritje okna
-    update_show_item_label();
     // Posodobi labelo Play/Pause
     update_play_item_label();
     update_current_playing_item();
@@ -2313,11 +2311,6 @@ static gboolean hide_on_delete(GtkWidget *window, GdkEvent *event, gpointer user
     gtk_widget_hide(window);
     update_show_item_label();
     return TRUE; // prepreči zapiranje
-}
-
-static void on_main_window_hide(GtkWidget *widget, gpointer user_data) {
-    (void)widget; (void)user_data;
-    update_show_item_label();
 }
 
 // Callback za izhod
@@ -2577,7 +2570,7 @@ int main(int argc, char **argv) {
         GtkStyleContext *ctx = gtk_widget_get_style_context(main_window);
         if (ctx) gtk_style_context_add_class(ctx, "dark");
     }
-    
+
     // Glavni vertikalni box
     GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
     gtk_container_set_border_width(GTK_CONTAINER(vbox), 8);
@@ -2637,7 +2630,7 @@ int main(int argc, char **argv) {
     g_signal_connect(fav_toggle_button, "clicked", G_CALLBACK(on_fav_toggle_clicked), NULL);
 
     // Gumb za zapiranje okna (close) – ročno, ker je built-in na Plasma neviden.
-    GtkWidget *close_button = gtk_button_new_with_label("✘");
+    GtkWidget *close_button = gtk_button_new_from_icon_name("window-close-symbolic", GTK_ICON_SIZE_BUTTON);
     gtk_button_set_relief(GTK_BUTTON(close_button), GTK_RELIEF_NORMAL);
     gtk_widget_set_tooltip_text(close_button, "Zapri");
     g_signal_connect_swapped(close_button, "clicked", G_CALLBACK(gtk_widget_hide), main_window);
@@ -2676,21 +2669,21 @@ int main(int argc, char **argv) {
     g_signal_connect(treeview, "drag-data-received", G_CALLBACK(on_drag_data_received), NULL);
     g_signal_connect(treeview, "drag-motion", G_CALLBACK(on_drag_motion), NULL);
     g_signal_connect(treeview, "drag-drop", G_CALLBACK(on_drag_drop), NULL);
-    
+
     // Stolpec za ikono
     GtkCellRenderer *icon_renderer = gtk_cell_renderer_text_new();
     GtkTreeViewColumn *icon_column = gtk_tree_view_column_new_with_attributes("", icon_renderer, "text", 0, NULL);
     gtk_tree_view_column_set_sizing(icon_column, GTK_TREE_VIEW_COLUMN_FIXED);
     gtk_tree_view_column_set_fixed_width(icon_column, 30);  // Fiksna širina za ikono
     gtk_tree_view_append_column(GTK_TREE_VIEW(treeview), icon_column);
-    
+
     // Star column (favorite)
     GtkCellRenderer *fav_renderer = gtk_cell_renderer_text_new();
     GtkTreeViewColumn *fav_column = gtk_tree_view_column_new_with_attributes("", fav_renderer, "text", 3, NULL);
     gtk_tree_view_column_set_sizing(fav_column, GTK_TREE_VIEW_COLUMN_FIXED);
     gtk_tree_view_column_set_fixed_width(fav_column, 24);
     gtk_tree_view_append_column(GTK_TREE_VIEW(treeview), fav_column);
-    
+
     // Stolpec za ime postaje
     GtkCellRenderer *name_renderer = gtk_cell_renderer_text_new();
     GtkTreeViewColumn *name_column = gtk_tree_view_column_new_with_attributes("", name_renderer, "text", 1, NULL);
@@ -2755,8 +2748,6 @@ int main(int argc, char **argv) {
 
     // Namesto destroy uporabim delete-event za skrivanje
     g_signal_connect(main_window, "delete-event", G_CALLBACK(hide_on_delete), NULL);
-    // Posodobi tray meni labelo, ko je okno skrito (ne glede na način)
-    g_signal_connect(main_window, "hide", G_CALLBACK(on_main_window_hide), NULL);
 
         // Tray ikona (AppIndicator)
     AppIndicator *indicator = app_indicator_new(
